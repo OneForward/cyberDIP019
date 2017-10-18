@@ -26,9 +26,10 @@ resultpt *sortedResults;
 double *similarityArr;
 ofstream out("E:/qtdipdata.txt");
 bool matchedFirstTime = 0, matchedSecondTime = 0;
+Mat frame;
 
-void matchTemplate(int);
-void matchTemplate(int, int);
+void matchTemplate2(int);
+void matchTemplate2(int, int);
 void clipOriginPic(int mode);
 void checkMatchedState();
 
@@ -97,6 +98,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				 
 	////// 视频流存放在该路径下
 	imwrite("frame.png", img);
+	frame = imread("frame.png");
 	//string fname = "E:/frames/frame_";  
 	//fname += ('0' + mode*mode / 10); fname += ('0' + mode*mode % 10); fname += '_';
 	//fname += ('0' + counter / 100); fname += ('0' + counter / 10 % 10); fname += ('0' + counter % 10);
@@ -111,31 +113,45 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	const int x0 = 52, y0 = 315, x1 = 489, y1 = 752;// 目标正方形区域
 	int d = (x1 - x0) / 4 / mode;
 
-	
-	double similarityAccuracy = 1e-1;
-	if (STATE == GAME_INIT) {
+
+	double similarityAccuracy = 1e-5;
+
+
+	if (STATE == GAME_INIT || STATE == GAME_IN) {
 		// 进入游戏运行状态
 		// 第一次匹配
 		
 		
 		if (!matchedFirstTime) {
-			matchTemplate(mode);
+			matchTemplate2(mode);
 			matchedFirstTime = true;
 		}
 		if (matchedFirstTime) {
 			out << "successfully matched first time" << endl;
 			for (int i = 0; i < mode*mode && similarityArr[i] < similarityAccuracy; ++i) {
-				device->comHitDown();
 				out << "successfully comHitDown" << endl;
 				double scaleX, scaleY;
-				scaleX = ((double)resultPoints[i].x + d * (1 / 2.0 + i%mode)) / pt.cols * 100;
-				scaleY = ((double)resultPoints[i].y + d*(1 / 2.0 + i / mode)) / pt.rows * 100;
+				scaleX = ((double)resultPoints[i].x + d * (1 / 2.0 + i%mode)) / pt.cols;
+				scaleY = ((double)resultPoints[i].y + d*(1 / 2.0 + i / mode)) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
-				/*device->comMoveTo(resultPoints[i].x + d * (1 / 2 + i%mode),
-					resultPoints[i].y + d*(1 / 2 + i / mode));*/
+				device->comHitDown();
+
+				scaleX = ((double)resultPoints[i].x + d * (1 / 2.0 + i%mode)) / pt.cols;
+				scaleY = ((double)resultPoints[i].y + d*(1 / 2.0 + i / mode)) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
+				
+				/*double scaleX = 10, scaleY = 10;
+				double Xmove, Ymove;
+				Xmove = ((double)resultPoints[i].x + d * (1 / 2.0 + i%mode)) / img.cols * scaleX;
+				Ymove = ((double)resultPoints[i].y + d*(1 / 2.0 + i / mode)) / img.rows * scaleY;
+				out << "Xmove:" << Xmove << "Ymove" << Ymove << endl;
+				device->comMoveTo(Xmove, Ymove);*/
+					
 			}
+			matchTemplate2(mode);
+			matchedSecondTime = true;
 		}
 
 		// 第二次匹配，考虑到画面已经整洁了很多，匹配成功率应该会提高，让我们拭目以待
@@ -148,7 +164,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				device->comHitUp();
 			}
 		}
-		else matchTemplate(mode), matchedSecondTime = 1;*/
+		else matchTemplate2(mode), matchedSecondTime = 1;*/
 	}
 	//STATE = GAME_IN;
 
@@ -234,7 +250,8 @@ void clipOriginPic(int mode) {
 }
 
 /****************模板匹配***************/
-void matchTemplate(int mode) {
+
+void matchTemplate2(int mode) {
 	Mat srcImage, templImage, img, templ, result;
 	int match_method;
 	string file_play("E:/play00.png"), file_seg("E:/seg00_small_00.png"), file_final("E:/final00.png");
@@ -320,7 +337,7 @@ void matchTemplate(int mode) {
 }
 
 //模板匹配接口2
-void matchTemplate(int mode, int i) {
+void matchTemplate2(int mode, int i) {
 	Mat srcImage, templImage, img, templ, result;
 	int match_method;
 	string file_play("E:/play00.png"), file_seg("E:/seg00_small_00.png"), file_final("E:/final00.png");
@@ -376,8 +393,8 @@ void matchTemplate(int mode, int i) {
 	imshow("template", templ);
 }
 void checkMatchedState() {
-	Mat  templ, result, frame;
-	frame = imread("frame.png");
+	Mat  templ, result;
+	
 
 	int mode;
 	double minVal; double maxVal; Point minLoc; Point maxLoc;
@@ -393,7 +410,7 @@ void checkMatchedState() {
 	minVal = fabs(minVal);
 	qDebug() << "GAME_DOOR minVal: " << minVal << endl;
 	out << "GAME_DOOR minVal: " << minVal << endl;
-	if (minVal < 1e-8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl, out << "GAME_DOOR matched success" << endl;;
+	if (minVal < 1e-8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl, out << "GAME_DOOR matched success" << endl;
 
 	templ = imread(file_init);
 	matchTemplate(frame, templ, result, TM_SQDIFF);
@@ -402,6 +419,23 @@ void checkMatchedState() {
 	minVal = fabs(minVal);
 	qDebug() << "GAME_INIT minVal: " << minVal << endl;
 	out << "GAME_INIT minVal: " << minVal << endl;
-	if (minVal < 1e-7) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl, out << "GAME_INIT matched success" << endl;;
+	if (minVal < 1e-7) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl, out << "GAME_INIT matched success" << endl;
+
+	Mat in_square(frame, Rect(Point(60, 320), Point(480, 740)));
+	Mat in_square_templ = imread("E:/in_square.png");
+	matchTemplate(in_square, in_square_templ, result, TM_SQDIFF);
+	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+	minVal = fabs(minVal);
+	qDebug() << "GAME_IN minVal: " << minVal << endl;
+	out << "GAME_IN minVal: " << minVal << endl;
+	if (minVal < 1e-6) 
+		STATE = GAME_IN, 
+		qDebug() << "GAME_IN matched success" << endl, 
+		out << "GAME_IN matched success" << endl,
+		imwrite(file_play, frame);
+
 }
+
+
 #endif
