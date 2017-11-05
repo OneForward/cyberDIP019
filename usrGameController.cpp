@@ -108,7 +108,6 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	}
 
 	/*************以下为我添加的代码******************/
-	counter++;
 	updateFilenames(mode);
 
 	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
@@ -131,7 +130,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		out << "successfully matched " << success_game_in_cnt << " time" << endl;
 		qDebug() << "successfully matched " << success_game_in_cnt << " time" << endl;
 
-		for (int i = (success_game_in_cnt%mode)*mode; i < mode*mode; ++i) {
+		for (int i = ((success_game_in_cnt-1)%mode)*mode; i < mode*mode; ++i) {
 			if (finishedPic[i] == false) {
 				out << "successfully comHitDown" << endl;
 				double scaleX, scaleY;
@@ -142,22 +141,22 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				scaleX = ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 1080;
-				scaleY = ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 1920;
+				Sleep(3000);
+				scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 2) / pt.cols;
+				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 2 - UP_CUT) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "\nscaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
-
+				Sleep(3 * 1000);
 				qDebug() << "successfully moved one pic" << endl;
 				device->comMoveToScale(0, 0);//return original pos
 				Sleep(3 * 1000);
-				//system("pause");
 				moved_pics_cnt++;
-				if (moved_pics_cnt == mode) break;
+				if (moved_pics_cnt == 2*mode) break;
 			}
 		}
-		system("pause");
+		//system("pause");
 	}
 	
 	if (isSuccess) {
@@ -220,7 +219,7 @@ void match_template(int mode) {
 
 	resultPoints = new Point[mode*mode];
 	similarityArr = new double[mode*mode];
-	string num = "00";
+	string num = "00";	
 	for (int i = 0; i < mode*mode; ++i) {
 		num[0] = '0' + i / 10;
 		num[1] = '0' + i % 10;
