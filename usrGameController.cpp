@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <Windows.h>
 using namespace std;
 using namespace cv;
 
@@ -21,22 +22,28 @@ struct resultpt {
 enum {JIGTY, GAME_SELECT01, GAME_SELECT02,
 		GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS} STATE;
 
+const int mode = 3;// 8*8=64模式
+int X0 = 53, Y0 = 320, X1 = 501, Y1 = 769;// 目标正方形区域
+double d = (X1 - X0) / 2 / mode;
+
 int success_game_in_cnt = 0;
 double alpha = 1.0;
 Point* resultPoints;
 resultpt *matchedPics;
 double *similarityArr;
 ofstream out("E:/qtdipdata.txt");
-bool matchedFirstTime = 0, matchedSecondTime = 0;
 Mat frame;
 string  file_play("E:/_pics/play04.png"), file_seg("E:/_pics/seg00_small_00.png"), 
 		file_final("E:/_pics/final00.png"), file_door("E:/_pics/door02_02.png"), 
-		file_init("E:/_pics/init02_02.png");
+		file_init("E:/_pics/init02_02.png"), file_in_square("E:/_pics/in_square.png");
+bool* finishedPic = new bool[mode*mode];
+bool initFinishedPics(false);
 
 void match_template(int mode);
 void checkMatchedState(int mode);
 bool checkSuccess(int mode);
 void updateFilenames(int mode);
+int diff_pics(Mat& src, Mat& tmp);
 
 #ifdef VIA_OPENCV
 //构造与初始化
@@ -72,7 +79,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	}
 
 	//截取图像边缘
-	cv::Mat pt = img(cv::Rect(0, 0, imgSize.width,imgSize.height));
+	cv::Mat pt = img(cv::Rect(0, UP_CUT, imgSize.width,imgSize.height));
 	cv::imshow(WIN_NAME, pt);
 	
 	//判断鼠标点击尺寸
@@ -100,7 +107,6 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 	/*************以下为我添加的代码******************/
 	counter++;
-	int mode = 2;// 8*8=64模式
 	updateFilenames(mode);
 
 	// 视频流存放在该路径下
@@ -114,16 +120,12 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 	 // 记住, img 就是当前帧的数据
 	checkMatchedState(mode);
-	
-	const int x0 = 52, y0 = 320, x1 = 500, y1 = 768;// 目标正方形区域
-	double d = (x1 - x0) / 2 / mode;
-
-	bool* finishedPic = new bool[mode*mode];
-	for (int i = 0; i < mode*mode; ++i) finishedPic[i] = false;
-	bool isSuccess = checkSuccess(mode);
+	bool isSuccess(false);
+	isSuccess = checkSuccess(mode);
 
 	if (STATE == GAME_IN && !isSuccess) {
 		// 进入游戏运行状态
+		
 		match_template(mode);
 		success_game_in_cnt++;
 		out << "successfully matched " << success_game_in_cnt << " time" << endl;
@@ -132,28 +134,37 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 			if (finishedPic[i] == false && matchedPics[i].similarity < 1e-5) {
 				out << "successfully comHitDown" << endl;
 				double scaleX, scaleY;
-				scaleX = ((double)matchedPics[i].pt.x  * alpha) / pt.cols;
-				scaleY = ((double)matchedPics[i].pt.y * alpha) / pt.rows ;
+				scaleX = ((double)matchedPics[i].pt.x * alpha) / pt.cols;
+				scaleY = ((double)matchedPics[i].pt.y * alpha - UP_CUT) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
+				//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
+				/*if (0.11 < scaleX && scaleX < 0.90 && 0.30 < scaleY && scaleY < 0.70)
+					continue;
+				else {
+					device->comMoveToScale(scaleX, scaleY);
+					device->comHitDown();
+				}*/
 				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();	
-
-				scaleX = ((double)x0 + d * (1 + 2 * (matchedPics[i].index % mode))) / pt.cols;
-				scaleY = ((double)y0 + d * (1 + 2 * (matchedPics[i].index / mode))) / pt.rows;
+				device->comHitDown();
+				
+				int X0 = 52, Y0 = 316, X1 = 495, Y1 = 760;// 目标正方形区域
+				double d = (X1 - X0) / 2 / mode;
+				scaleX = ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / pt.cols;
+				scaleY = ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode)) - UP_CUT) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "\nscaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
-
-				finishedPic[i] = true;
 			}
 			qDebug() << "successfully moved one pic" << endl;
 			device->comMoveToScale(0, 0);//return original pos
-			system("pause");
+			Sleep(3*1000);
+			//system("pause");
 		}
+		system("pause");
 	}
-
+	
 	if (isSuccess) {
 		qDebug() << " \n\n\nAll successfully matched, you can have fun debugging now!" << endl;
 		device->comMoveToScale(0, 0);//return original pos
@@ -206,7 +217,7 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 
 /****************模板匹配***************/
 void match_template(int mode) {
-	Mat srcImage, segTempl, src, seg, result， src_display;
+	Mat srcImage, segTempl, src, seg, result, src_display;
 
 	srcImage = imread(file_play, IMREAD_COLOR);
 	resize(srcImage, src, Size(srcImage.cols / alpha, srcImage.rows / alpha));
@@ -244,8 +255,8 @@ void match_template(int mode) {
 	}
 
 	imwrite(file_final, src_display);
-	namedWindow(file_final);
-	imshow(file_final, src_display);
+	//namedWindow(file_final);
+	//imshow(file_final, src_display);
 
 	// 排序结果
 	matchedPics = new resultpt[mode*mode];
@@ -277,6 +288,7 @@ void checkMatchedState(int mode) {
 	Point matchLoc;	
 	
 	templ = imread(file_door);
+	templ = Mat(templ, Rect(Point(0, UP_CUT), Point(templ.cols - 10, templ.rows - 10)));
 	matchTemplate(frame, templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
@@ -286,16 +298,17 @@ void checkMatchedState(int mode) {
 	if (minVal < 1e-8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl, out << "GAME_DOOR matched success" << endl;
 
 	templ = imread(file_init);
+	templ = Mat(templ, Rect(Point(0, UP_CUT), Point(templ.cols-10, templ.rows-10)));
 	matchTemplate(frame, templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
 	minVal = fabs(minVal);
 	qDebug() << "GAME_INIT minVal: " << minVal << endl;
 	out << "GAME_INIT minVal: " << minVal << endl;
-	if (minVal < 1e-7) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl, out << "GAME_INIT matched success" << endl;
+	if (minVal < 1e-9) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl, out << "GAME_INIT matched success" << endl;
 
-	Mat in_square(frame, Rect(Point(60, 320), Point(500, 760)));
-	Mat in_square_templ = imread("E:/in_square.png");
+	Mat in_square(frame, Rect(Point(60, 320), Point(500, 760)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
+	Mat in_square_templ = imread(file_in_square);
 	matchTemplate(in_square, in_square_templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
@@ -311,27 +324,52 @@ void checkMatchedState(int mode) {
 }
 
 bool checkSuccess(int mode) {
-	Mat  templ, result;
-	int mode;
-	double minVal; double maxVal; Point minLoc; Point maxLoc;
-	Point matchLoc;
+	if (!initFinishedPics)
+		for (int i = 0; i < mode*mode; ++i) finishedPic[i] = false;
+	initFinishedPics = true;
 
-	string file_init("E:/init02_02.png");
+	Mat segSrc, segTempl, result;
+	double minVal; double maxVal; Point minLoc; Point maxLoc; Point matchLoc;
 
-	templ = imread(file_init);
-	matchTemplate(frame, templ, result, TM_SQDIFF);
-	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
-	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
-	minVal = fabs(minVal);
-	
-	if (minVal < 1e-7) {
-		qDebug() << "ALL matched success" << endl;
-		out << "ALL matched success" << endl;
-		return true;
+	int X0 = 53, Y0 = 320, X1 = 501, Y1 = 769;// 目标正方形区域
+	double d = (X1 - X0) / 2 / mode; 
+	int xi0, yi0, minval = 999999999;
+	double *diffVal = new double[mode*mode];
+	for (int index = 0; index < mode*mode; ++index) {
+		xi0 = X0 + ((index % mode) * 2 + 0.5) * d;
+		yi0 = Y0 + ((index / mode) * 2 + 0.5) * d;
+		segSrc = frame(Rect(xi0, yi0, d, d));
+
+		file_seg[file_seg.length() - 6] = '0' + index / 10;
+		file_seg[file_seg.length() - 5] = '0' + index % 10;
+		segTempl = imread(file_seg, IMREAD_COLOR);
+
+		diffVal[index] = diff_pics(segSrc, segTempl);
+		qDebug() << "index：" << index << "\tdiffval" << diffVal[index] << endl;
+		out << "index：" << index << "\tdiffval" << diffVal[index] << endl;
+		if (minval > diffVal[index])
+			minval = diffVal[index];
 	}
-	else
-		return false;
-	
+	for (int index = 0; index < mode*mode; ++index) {
+		xi0 = X0 + ((index % mode) * 2 + 0.5) * d;
+		yi0 = Y0 + ((index / mode) * 2 + 0.5) * d;
+		diffVal[index] /= minval*1.0;
+		if (diffVal[index] < 3) {
+			finishedPic[index] = true;
+		}
+		qDebug() << "index: " << index << "\tdiffval: " << diffVal[index] << endl;
+	}
+
+	for (int i = 0; i < mode*mode; ++i) 
+		if (!finishedPic[i]) return false;
+
+	qDebug() << "ALL matched success" << endl;
+	out << "ALL matched success" << endl;
+	return true;
+}
+
+int diff_pics(Mat& src, Mat& tmp) {
+	return cv::sum(cv::abs(src - tmp))[0];
 }
 
 void updateFilenames(int mode)
@@ -343,9 +381,9 @@ void updateFilenames(int mode)
 	file_seg[file_seg.length() - 14] = mode*mode % 10 + '0';
 	file_final[file_final.length() - 6] = mode*mode / 10 + '0';
 	file_final[file_final.length() - 5] = mode*mode % 10 + '0';
-	file_door[file_door.length() - 6] = mode*mode / 10 + '0';
-	file_door[file_door.length() - 5] = mode*mode % 10 + '0';
-	file_init[file_init.length() - 6] = mode*mode / 10 + '0';
-	file_init[file_init.length() - 5] = mode*mode % 10 + '0';
+	file_door[file_door.length() - 6] = mode / 10 + '0';
+	file_door[file_door.length() - 5] = mode % 10 + '0';
+	file_init[file_init.length() - 6] = mode / 10 + '0';
+	file_init[file_init.length() - 5] = mode % 10 + '0';
 }
 #endif
