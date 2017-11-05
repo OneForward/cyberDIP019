@@ -23,19 +23,21 @@ enum {JIGTY, GAME_SELECT01, GAME_SELECT02,
 		GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS} STATE;
 
 const int mode = 3;// 8*8=64模式
-int X0 = 53, Y0 = 320, X1 = 501, Y1 = 769;// 目标正方形区域
-double d = (X1 - X0) / 2 / mode;
+// (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
+// square 893x893 in (1080x1920)
+const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
+double d = (X1 - X0) / 2.0 / mode;
 
 int success_game_in_cnt = 0;
-double alpha = 1.0;
+double alpha = 2.5;
 Point* resultPoints;
 resultpt *matchedPics;
 double *similarityArr;
 ofstream out("E:/qtdipdata.txt");
 Mat frame;
-string  file_play("E:/_pics/play04.png"), file_seg("E:/_pics/seg00_small_00.png"), 
-		file_final("E:/_pics/final00.png"), file_door("E:/_pics/door02_02.png"), 
-		file_init("E:/_pics/init02_02.png"), file_in_square("E:/_pics/in_square.png");
+string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"), 
+		file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"), 
+		file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png");
 bool* finishedPic = new bool[mode*mode];
 bool initFinishedPics(false);
 
@@ -109,58 +111,51 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	counter++;
 	updateFilenames(mode);
 
-	// 视频流存放在该路径下
-	imwrite("frame.png", img);
-	frame = imread("frame.png");
-	/*string fname = "E:/frames/frame_";  
-	fname += ('0' + mode*mode / 10); fname += ('0' + mode*mode % 10); fname += '_';
-	fname += ('0' + counter / 100); fname += ('0' + counter / 10 % 10); fname += ('0' + counter % 10);
-	fname += (".png");
-	imwrite(fname, img);*/
-
-	 // 记住, img 就是当前帧的数据
-	checkMatchedState(mode);
-	bool isSuccess(false);
-	isSuccess = checkSuccess(mode);
+	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
+	// 要根据实际Total control窗口的大小调整, 此处为552x1078
+	frame = img(Rect(7, 63, 540, 960));
+	imwrite("frame.png", frame);
+	
+	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
+	checkMatchedState(mode); 
+	
+	bool isSuccess(false); 
+	// 判别当前帧是否成功游戏，同时返回一个正确拼图子块的布尔索引
+	isSuccess = checkSuccess(mode); 
+	int moved_pics_cnt = 0;
 
 	if (STATE == GAME_IN && !isSuccess) {
 		// 进入游戏运行状态
-		
-		match_template(mode);
+
 		success_game_in_cnt++;
 		out << "successfully matched " << success_game_in_cnt << " time" << endl;
 		qDebug() << "successfully matched " << success_game_in_cnt << " time" << endl;
-		for (int i = 0; i < mode*mode; ++i) {
-			if (finishedPic[i] == false && matchedPics[i].similarity < 1e-5) {
+
+		for (int i = (success_game_in_cnt%mode)*mode; i < mode*mode; ++i) {
+			if (finishedPic[i] == false) {
 				out << "successfully comHitDown" << endl;
 				double scaleX, scaleY;
 				scaleX = ((double)matchedPics[i].pt.x * alpha) / pt.cols;
-				scaleY = ((double)matchedPics[i].pt.y * alpha - UP_CUT) / pt.rows;
+				scaleY = ((double)matchedPics[i].pt.y * alpha) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
-				//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
-				/*if (0.11 < scaleX && scaleX < 0.90 && 0.30 < scaleY && scaleY < 0.70)
-					continue;
-				else {
-					device->comMoveToScale(scaleX, scaleY);
-					device->comHitDown();
-				}*/
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
-				
-				int X0 = 52, Y0 = 316, X1 = 495, Y1 = 760;// 目标正方形区域
-				double d = (X1 - X0) / 2 / mode;
-				scaleX = ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / pt.cols;
-				scaleY = ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode)) - UP_CUT) / pt.rows;
+
+				scaleX = ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 1080;
+				scaleY = ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 1920;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "\nscaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
+
+				qDebug() << "successfully moved one pic" << endl;
+				device->comMoveToScale(0, 0);//return original pos
+				Sleep(3 * 1000);
+				//system("pause");
+				moved_pics_cnt++;
+				if (moved_pics_cnt == mode) break;
 			}
-			qDebug() << "successfully moved one pic" << endl;
-			device->comMoveToScale(0, 0);//return original pos
-			Sleep(3*1000);
-			//system("pause");
 		}
 		system("pause");
 	}
@@ -217,14 +212,11 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 
 /****************模板匹配***************/
 void match_template(int mode) {
-	Mat srcImage, segTempl, src, seg, result, src_display;
+	Mat src, seg, result, src_display;
 
-	srcImage = imread(file_play, IMREAD_COLOR);
-	resize(srcImage, src, Size(srcImage.cols / alpha, srcImage.rows / alpha));
+	src = frame;
+	resize(src, src, Size(src.cols / alpha, src.rows / alpha));
 	src.copyTo(src_display);
-	int result_cols = src.cols - seg.cols + 1;
-	int result_rows = src.rows - seg.rows + 1;
-	result.create(result_rows, result_cols, CV_32FC1);
 
 	resultPoints = new Point[mode*mode];
 	similarityArr = new double[mode*mode];
@@ -235,8 +227,8 @@ void match_template(int mode) {
 		seg.release(); result.release();
 		file_seg[file_seg.length() - 6] = num[0];
 		file_seg[file_seg.length() - 5] = num[1];
-		segTempl = imread(file_seg, IMREAD_COLOR);
-		resize(segTempl, seg, Size(segTempl.cols / alpha, segTempl.rows / alpha));
+		seg = imread(file_seg, IMREAD_COLOR);
+		resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
 
 		matchTemplate(src, seg, result, TM_SQDIFF);
 		normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
@@ -255,27 +247,17 @@ void match_template(int mode) {
 	}
 
 	imwrite(file_final, src_display);
-	//namedWindow(file_final);
-	//imshow(file_final, src_display);
+	namedWindow(file_final);
+	imshow(file_final, src_display);
 
 	// 排序结果
 	matchedPics = new resultpt[mode*mode];
 	double val; int pos;
 	for (int i = 0; i < mode*mode; ++i) {
-		val = similarityArr[i]; pos = 0;
-		for (int j = 0; j < mode*mode; ++j)
-			if (j != i && val < similarityArr[j]) pos++;
-		if (matchedPics[pos].similarity == val) pos++;
-		matchedPics[pos] = resultpt(resultPoints[i], i, val);
+		val = similarityArr[i];
+		matchedPics[i] = resultpt(resultPoints[i], i, val);
 	}
-	out << "matchedPics:\n";
-	for (int i = 0; i < mode*mode; ++i) {
-		out << i << ": " << matchedPics[i].similarity << endl;
-	}
-	out << "similarityArr:\n";
-	for (int i = 0; i < mode*mode; ++i) {
-		out << i << ": " << similarityArr[i] << endl;
-	}
+	
 	//本函数可提供一个全局接口 resultPoints[mode*mode] 即最终所有拼图子块的中心
 	//本函数可提供一个全局接口 matchedPics[mode*mode] 即依相似度排序后的拼图子块中心
 	//结果不完全正确，可以先取相似度最高的子图先移动，再逐步调整
@@ -287,8 +269,10 @@ void checkMatchedState(int mode) {
 	double minVal; double maxVal; Point minLoc; Point maxLoc;
 	Point matchLoc;	
 	
+	frame = imread("frame.png");
 	templ = imread(file_door);
-	templ = Mat(templ, Rect(Point(0, UP_CUT), Point(templ.cols - 10, templ.rows - 10)));
+	resize(templ, templ, Size(540, 960));
+	templ = templ(Rect(1, 1, 500, 900));
 	matchTemplate(frame, templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
@@ -298,7 +282,8 @@ void checkMatchedState(int mode) {
 	if (minVal < 1e-8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl, out << "GAME_DOOR matched success" << endl;
 
 	templ = imread(file_init);
-	templ = Mat(templ, Rect(Point(0, UP_CUT), Point(templ.cols-10, templ.rows-10)));
+	resize(templ, templ, Size(540, 960));
+	templ = templ(Rect(0, 0, 500, 900));
 	matchTemplate(frame, templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
@@ -307,7 +292,7 @@ void checkMatchedState(int mode) {
 	out << "GAME_INIT minVal: " << minVal << endl;
 	if (minVal < 1e-9) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl, out << "GAME_INIT matched success" << endl;
 
-	Mat in_square(frame, Rect(Point(60, 320), Point(500, 760)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
+	Mat in_square(frame, Rect(Point(X0/2, Y0/2), Point(X1/2, Y1/2)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
 	Mat in_square_templ = imread(file_in_square);
 	matchTemplate(in_square, in_square_templ, result, TM_SQDIFF);
 	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
@@ -319,51 +304,43 @@ void checkMatchedState(int mode) {
 		STATE = GAME_IN,
 		qDebug() << "GAME_IN matched success" << endl,
 		out << "GAME_IN matched success" << endl;
-		imwrite(file_play, frame);
 	}
 }
 
 bool checkSuccess(int mode) {
+	if (STATE != GAME_IN) return false;
+
 	if (!initFinishedPics)
 		for (int i = 0; i < mode*mode; ++i) finishedPic[i] = false;
 	initFinishedPics = true;
+	
+	match_template(mode);
+	Mat frame_copy;
+	frame.copyTo(frame_copy);
+	int xi0, yi0;
+	double d_error;
+	for (int i = 0; i < mode*mode; ++i) {
+		xi0 = X0 + d * (0.5 + 2.0 * (matchedPics[i].index % mode));
+		yi0 = Y0 + d * (0.5 + 2.0 * (matchedPics[i].index / mode));
+		xi0 /= 2; yi0 /= 2;
+		d_error = norm(resultPoints[i] - Point(xi0 / alpha, yi0 / alpha));
+		cout << "d_error: " << d_error << endl;
+		if (d_error < 80 / mode) {// 80/mode经验常数，可能需要调整
+			finishedPic[i] = true;
+			cout << i << " matched success" << endl;
 
-	Mat segSrc, segTempl, result;
-	double minVal; double maxVal; Point minLoc; Point maxLoc; Point matchLoc;
-
-	int X0 = 53, Y0 = 320, X1 = 501, Y1 = 769;// 目标正方形区域
-	double d = (X1 - X0) / 2 / mode; 
-	int xi0, yi0, minval = 999999999;
-	double *diffVal = new double[mode*mode];
-	for (int index = 0; index < mode*mode; ++index) {
-		xi0 = X0 + ((index % mode) * 2 + 0.5) * d;
-		yi0 = Y0 + ((index / mode) * 2 + 0.5) * d;
-		segSrc = frame(Rect(xi0, yi0, d, d));
-
-		file_seg[file_seg.length() - 6] = '0' + index / 10;
-		file_seg[file_seg.length() - 5] = '0' + index % 10;
-		segTempl = imread(file_seg, IMREAD_COLOR);
-
-		diffVal[index] = diff_pics(segSrc, segTempl);
-		qDebug() << "index：" << index << "\tdiffval" << diffVal[index] << endl;
-		out << "index：" << index << "\tdiffval" << diffVal[index] << endl;
-		if (minval > diffVal[index])
-			minval = diffVal[index];
-	}
-	for (int index = 0; index < mode*mode; ++index) {
-		xi0 = X0 + ((index % mode) * 2 + 0.5) * d;
-		yi0 = Y0 + ((index / mode) * 2 + 0.5) * d;
-		diffVal[index] /= minval*1.0;
-		if (diffVal[index] < 3) {
-			finishedPic[index] = true;
+			rectangle(frame_copy, Point(xi0, yi0), Point(xi0 + d / 2, yi0 + d / 2), Scalar::all(255), 2, 8, 0);
+			string num = "00"; num[0] = '0' + i / 10; num[1] = '0' + i % 10;
+			putText(frame_copy, num, Point(xi0, yi0 + d / 3), 2, 0.5, Scalar(255, 0, 255), 2);
 		}
-		qDebug() << "index: " << index << "\tdiffval: " << diffVal[index] << endl;
 	}
+	namedWindow("rst");
+	imshow("rst", frame_copy);
 
-	for (int i = 0; i < mode*mode; ++i) 
+	for (int i = 0; i < mode*mode; ++i)
 		if (!finishedPic[i]) return false;
 
-	qDebug() << "ALL matched success" << endl;
+	cout << "ALL matched success" << endl;
 	out << "ALL matched success" << endl;
 	return true;
 }
@@ -375,15 +352,18 @@ int diff_pics(Mat& src, Mat& tmp) {
 void updateFilenames(int mode)
 {
 	// 写这个函数主要是因为我的模板图片的路径总是被我搬来搬去，不想换一次路径改一次了
-	file_play[file_play.length() - 6] = mode*mode / 10 + '0';
-	file_play[file_play.length() - 5] = mode*mode % 10 + '0';
-	file_seg[file_seg.length() - 15] = mode*mode / 10 + '0';
-	file_seg[file_seg.length() - 14] = mode*mode % 10 + '0';
-	file_final[file_final.length() - 6] = mode*mode / 10 + '0';
-	file_final[file_final.length() - 5] = mode*mode % 10 + '0';
+	file_seg[file_seg.length() - 9] = mode*mode / 10 + '0';
+	file_seg[file_seg.length() - 8] = mode*mode % 10 + '0';
+
+	file_play[file_play.length() - 6] = mode / 10 + '0';
+	file_play[file_play.length() - 5] = mode % 10 + '0';
+	file_final[file_final.length() - 6] = mode / 10 + '0';
+	file_final[file_final.length() - 5] = mode % 10 + '0';
 	file_door[file_door.length() - 6] = mode / 10 + '0';
 	file_door[file_door.length() - 5] = mode % 10 + '0';
 	file_init[file_init.length() - 6] = mode / 10 + '0';
 	file_init[file_init.length() - 5] = mode % 10 + '0';
+	file_in_square[file_in_square.length() - 6] = mode / 10 + '0';
+	file_in_square[file_in_square.length() - 5] = mode % 10 + '0';
 }
 #endif
