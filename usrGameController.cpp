@@ -134,8 +134,8 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 			if (finishedPic[i] == false) {
 				out << "successfully comHitDown" << endl;
 				double scaleX, scaleY;
-				scaleX = ((double)matchedPics[i].pt.x * alpha) / pt.cols;
-				scaleY = ((double)matchedPics[i].pt.y * alpha) / pt.rows;
+				scaleX = (7 + matchedPics[i].pt.x * alpha) / pt.cols;
+				scaleY = (63 - UP_CUT + matchedPics[i].pt.y * alpha) / pt.rows;
 				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				qDebug() << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
