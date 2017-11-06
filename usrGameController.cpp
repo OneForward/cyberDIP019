@@ -30,6 +30,7 @@ double d = (X1 - X0) / 2.0 / mode;
 
 int success_game_in_cnt = 0;
 double alpha = 2.5;
+double scaleX, scaleY;
 Point* resultPoints;
 resultpt *matchedPics;
 double *similarityArr;
@@ -41,11 +42,18 @@ string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 bool* finishedPic = new bool[mode*mode];
 bool initFinishedPics(false);
 
+vector<vector<Point> > contours_poly;
+vector<Rect> boundRectDown;
+vector<Rect> boundRectUp;
+
 void match_template(int mode);
 void checkMatchedState(int mode);
 bool checkSuccess(int mode);
+bool checkDownMargin();
+bool checkUpMargin();
 void updateFilenames(int mode);
 int diff_pics(Mat& src, Mat& tmp);
+
 
 #ifdef VIA_OPENCV
 //构造与初始化
@@ -132,32 +140,73 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 		for (int i = ((success_game_in_cnt-1)%mode)*mode; i < mode*mode; ++i) {
 			if (finishedPic[i] == false) {
-				out << "successfully comHitDown" << endl;
-				double scaleX, scaleY;
+				
 				scaleX = (7 + matchedPics[i].pt.x * alpha) / pt.cols;
 				scaleY = (63 - UP_CUT + matchedPics[i].pt.y * alpha) / pt.rows;
-				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
-				qDebug() << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				Sleep(3000);
+				Sleep(3 * 1000);
 				scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 2) / pt.cols;
 				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 2 - UP_CUT) / pt.rows;
-				out << "scaleX:" << scaleX << "scaleY" << scaleY << endl;
-				qDebug() << "\nscaleX:" << scaleX << "scaleY" << scaleY << endl;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
 				Sleep(3 * 1000);
-				qDebug() << "successfully moved one pic" << endl;
+				
+				qDebug() << "successfully moved matched pic" << endl;
 				device->comMoveToScale(0, 0);//return original pos
 				Sleep(3 * 1000);
 				moved_pics_cnt++;
 				if (moved_pics_cnt == 2*mode) break;
 			}
 		}
-		//system("pause");
+
+		int remainedPics = 0;
+		for (int i = 0; i < mode*mode; ++i) {
+			if (finishedPic[i] == false) remainedPics++;
+		}
+		if (remainedPics <= 3) {
+			if (checkUpMargin) {
+				// move up pics
+				
+				scaleX = (7 + (boundRectUp[0].tl().x + boundRectUp[0].br().x)/2* alpha) / pt.cols;
+				scaleY = (63 - UP_CUT + (boundRectUp[0].tl().y + boundRectUp[0].br().y)/2 * alpha) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
+				device->comHitDown();
+
+				Sleep(3000);
+				scaleX = (7 + 540/2) / pt.cols;
+				scaleY = (63 + 518/2/2) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
+				device->comHitUp();
+				Sleep(3 * 1000);
+
+				qDebug() << "successfully checked up pics" << endl;
+				device->comMoveToScale(0, 0);//return original pos
+				Sleep(3 * 1000);
+			}
+			if (checkDownMargin) {
+				scaleX = (7 + (boundRectDown[0].tl().x + boundRectDown[0].br().x) / 2 * alpha) / pt.cols;
+				scaleY = (63 - UP_CUT + 1411/2+(boundRectDown[0].tl().y + boundRectDown[0].br().y) / 2 * alpha) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
+				device->comHitDown();
+
+				Sleep(3000);
+				scaleX = (7 + 540 / 2) / pt.cols;
+				scaleY = (63 + (1920 + 1411) / 2 / 2) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
+				device->comHitUp();
+				Sleep(3 * 1000);
+
+				qDebug() << "successfully checked up pics" << endl;
+				device->comMoveToScale(0, 0);//return original pos
+				Sleep(3 * 1000);
+			}
+
+		}
+
 	}
+	
 	
 	if (isSuccess) {
 		qDebug() << " \n\n\nAll successfully matched, you can have fun debugging now!" << endl;
@@ -344,6 +393,64 @@ bool checkSuccess(int mode) {
 	return true;
 }
 
+bool checkDownMargin() {
+	// 下边缘的检查
+	Mat A = imread(file_final), AA = imread(file_init);
+	resize(AA, AA, Size(216, 384));
+	Mat C = cv::abs(A - AA);
+	Mat DownPic = C(Rect(Point(0, 1411 / 5), Point(216, 384)));
+	cvtColor(DownPic, DownPic, cv::COLOR_RGB2GRAY);
+	threshold(DownPic, DownPic, 10, 255, THRESH_BINARY);
+	erode(DownPic, DownPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
+
+	Mat threshold_output = DownPic;
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+
+	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	/// Approximate contours to polygons + get bounding rects and circles
+	vector<vector<Point> > contours_poly(contours.size());
+	vector<Rect> boundRectDown(contours.size());
+
+	if (contours.size() == 0) return false;
+	for (int i = 0; i < contours.size(); i++)
+	{
+		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
+		boundRectDown[i] = boundingRect(Mat(contours_poly[i]));
+	}
+	
+	return true;
+}
+
+bool checkUpMargin() {
+	// 上边缘的检查
+	Mat A = imread(file_final), AA = imread(file_init);
+	resize(AA, AA, Size(216, 384));
+	Mat C = cv::abs(A - AA);
+	Mat UpPic = C(Rect(Point(0, 0), Point(216, 518 / 5)));
+	cvtColor(UpPic, UpPic, cv::COLOR_RGB2GRAY);
+	threshold(UpPic, UpPic, 10, 255, THRESH_BINARY);
+	erode(UpPic, UpPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
+
+	Mat threshold_output = UpPic;
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+
+	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	/// Approximate contours to polygons + get bounding rects and circles
+	vector<vector<Point> > contours_poly(contours.size());
+	vector<Rect> boundRectUp(contours.size());
+
+	if (contours.size() == 0) return false;
+	for (int i = 0; i < contours.size(); i++)
+	{
+		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
+		boundRectUp[i] = boundingRect(Mat(contours_poly[i]));
+	}
+
+	return true;
+}
+
 int diff_pics(Mat& src, Mat& tmp) {
 	return cv::sum(cv::abs(src - tmp))[0];
 }
@@ -365,4 +472,6 @@ void updateFilenames(int mode)
 	file_in_square[file_in_square.length() - 6] = mode / 10 + '0';
 	file_in_square[file_in_square.length() - 5] = mode % 10 + '0';
 }
+
+
 #endif
