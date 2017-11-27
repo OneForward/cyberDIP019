@@ -22,7 +22,7 @@ struct resultpt {
 enum {JIGTY, GAME_SELECT01, GAME_SELECT02,
 		GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS} STATE;
 
-const int mode = 3;// 8*8=64模式
+const int mode = 4;// 8*8=64模式
 // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
@@ -42,7 +42,8 @@ string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 bool* finishedPic = new bool[mode*mode];
 bool initFinishedPics(false);
 
-vector<vector<Point> > contours_poly;
+vector<vector<Point> > contours_poly_up;
+vector<vector<Point> > contours_poly_down;
 vector<Rect> boundRectDown;
 vector<Rect> boundRectUp;
 
@@ -121,7 +122,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
 	// 要根据实际Total control窗口的大小调整, 此处为552x1078
 	frame = img(Rect(7, 63, 540, 960));
-	imwrite("frame.png", frame);
+	cv::imwrite("frame.png", frame);
 	
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
 	checkMatchedState(mode); 
@@ -130,11 +131,13 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	// 判别当前帧是否成功游戏，同时返回一个正确拼图子块的布尔索引
 	isSuccess = checkSuccess(mode); 
 	int moved_pics_cnt = 0;
+	
+	//跳出第一次的机械臂移动，以便查看匹配结果
+	if (success_game_in_cnt == 0) STATE = GAME_DOOR, success_game_in_cnt++;
 
 	if (STATE == GAME_IN && !isSuccess) {
 		// 进入游戏运行状态
 
-		success_game_in_cnt++;
 		out << "successfully matched " << success_game_in_cnt << " time" << endl;
 		qDebug() << "successfully matched " << success_game_in_cnt << " time" << endl;
 
@@ -146,12 +149,12 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				Sleep(3 * 1000);
+				Sleep(2 * 1000);
 				scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 2) / pt.cols;
 				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 2 - UP_CUT) / pt.rows;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
-				Sleep(3 * 1000);
+				Sleep(2 * 1000);
 				
 				qDebug() << "successfully moved matched pic" << endl;
 				device->comMoveToScale(0, 0);//return original pos
@@ -166,7 +169,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 			if (finishedPic[i] == false) remainedPics++;
 		}
 		if (remainedPics <= 3) {
-			if (checkUpMargin) {
+			if (checkUpMargin()) {
 				// move up pics
 				
 				scaleX = (7 + (boundRectUp[0].tl().x + boundRectUp[0].br().x)/2* alpha) / pt.cols;
@@ -174,29 +177,29 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				Sleep(3000);
+				Sleep(2000);
 				scaleX = (7 + 540/2) / pt.cols;
 				scaleY = (63 + 518/2/2) / pt.rows;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
-				Sleep(3 * 1000);
+				Sleep(2 * 1000);
 
 				qDebug() << "successfully checked up pics" << endl;
 				device->comMoveToScale(0, 0);//return original pos
 				Sleep(3 * 1000);
 			}
-			if (checkDownMargin) {
+			if (checkDownMargin()) {
 				scaleX = (7 + (boundRectDown[0].tl().x + boundRectDown[0].br().x) / 2 * alpha) / pt.cols;
 				scaleY = (63 - UP_CUT + 1411/2+(boundRectDown[0].tl().y + boundRectDown[0].br().y) / 2 * alpha) / pt.rows;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				Sleep(3000);
+				Sleep(2000);
 				scaleX = (7 + 540 / 2) / pt.cols;
 				scaleY = (63 + (1920 + 1411) / 2 / 2) / pt.rows;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitUp();
-				Sleep(3 * 1000);
+				Sleep(2 * 1000);
 
 				qDebug() << "successfully checked up pics" << endl;
 				device->comMoveToScale(0, 0);//return original pos
@@ -294,7 +297,7 @@ void match_template(int mode) {
 		putText(src_display, num, Point(matchLoc.x, matchLoc.y + seg.rows / 1.5), 6, 1, Scalar(255, 0, 255), 2);
 	}
 
-	imwrite(file_final, src_display);
+	cv::imwrite(file_final, src_display);
 	namedWindow(file_final);
 	imshow(file_final, src_display);
 
@@ -343,7 +346,7 @@ void checkMatchedState(int mode) {
 	Mat in_square(frame, Rect(Point(X0/2, Y0/2), Point(X1/2, Y1/2)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
 	Mat in_square_templ = imread(file_in_square);
 	matchTemplate(in_square, in_square_templ, result, TM_SQDIFF);
-	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());	
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
 	minVal = fabs(minVal);
 	qDebug() << "GAME_IN minVal: " << minVal << endl;
@@ -409,14 +412,14 @@ bool checkDownMargin() {
 
 	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 	/// Approximate contours to polygons + get bounding rects and circles
-	vector<vector<Point> > contours_poly(contours.size());
+	vector<vector<Point> > contours_poly_down(contours.size());
 	vector<Rect> boundRectDown(contours.size());
 
 	if (contours.size() == 0) return false;
 	for (int i = 0; i < contours.size(); i++)
 	{
-		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
-		boundRectDown[i] = boundingRect(Mat(contours_poly[i]));
+		approxPolyDP(Mat(contours[i]), contours_poly_down[i], 3, true);
+		boundRectDown[i] = boundingRect(Mat(contours_poly_down[i]));
 	}
 	
 	return true;
@@ -438,14 +441,14 @@ bool checkUpMargin() {
 
 	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 	/// Approximate contours to polygons + get bounding rects and circles
-	vector<vector<Point> > contours_poly(contours.size());
+	vector<vector<Point> > contours_poly_up(contours.size());
 	vector<Rect> boundRectUp(contours.size());
 
 	if (contours.size() == 0) return false;
 	for (int i = 0; i < contours.size(); i++)
 	{
-		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
-		boundRectUp[i] = boundingRect(Mat(contours_poly[i]));
+		approxPolyDP(Mat(contours[i]), contours_poly_up[i], 3, true);
+		boundRectUp[i] = boundingRect(Mat(contours_poly_up[i]));
 	}
 
 	return true;
