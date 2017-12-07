@@ -29,9 +29,11 @@ const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 double d = (X1 - X0) / 2.0 / mode;
 
 int success_game_in_cnt = 0;
+int seg_cnt=0;
 double alpha = 2.5;
 double scaleX, scaleY;
 Point* resultPoints;
+Point rstPoint;
 resultpt *matchedPics;
 double *similarityArr;
 ofstream out("E:/qtdipdata.txt");
@@ -48,6 +50,8 @@ vector<Rect> boundRectDown;
 vector<Rect> boundRectUp;
 
 void match_template(int mode);
+void match_template_1_pic_to_1_pic(int mode, int seg_num);
+void match_template_1_pic_to_multi_pic(int mode, int seg_cnt, int &tmp_cnt);
 void checkMatchedState(int mode);
 bool checkSuccess(int mode);
 bool checkDownMargin();
@@ -103,6 +107,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		{
 			device->comHitDown();
 		}
+		
 		device->comMoveToScale( ((double)argM.box.x + argM.box.width) / pt.cols,
 								((double)argM.box.y + argM.box.height) / pt.rows);
 		argM.box.x = -1; argM.box.y = -1;
@@ -129,8 +134,9 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	
 	bool isSuccess(false); 
 	// 判别当前帧是否成功游戏，同时返回一个正确拼图子块的布尔索引
-	isSuccess = checkSuccess(mode); 
-	int moved_pics_cnt = 0;
+	if (seg_cnt==16)
+		isSuccess = checkSuccess(mode); 
+	int moved_seg_cnt = 0;
 	
 	//跳出第一次的机械臂移动，以便查看匹配结果
 	if (success_game_in_cnt == 0) STATE = GAME_DOOR, success_game_in_cnt++;
@@ -141,72 +147,63 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		out << "successfully matched " << success_game_in_cnt << " time" << endl;
 		qDebug() << "successfully matched " << success_game_in_cnt << " time" << endl;
 
-		for (int i = ((success_game_in_cnt-1)%mode)*mode; i < mode*mode; ++i) {
-			if (finishedPic[i] == false) {
-				
-				scaleX = (7 + matchedPics[i].pt.x * alpha) / pt.cols;
-				scaleY = (63 - UP_CUT + matchedPics[i].pt.y * alpha) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();
+		// 我现在要移动第cnt块seg
+		seg_cnt %= 16;
+		if (finishedPic[seg_cnt] == false) {
+			
+			scaleX = (7 + rstPoint.x * alpha) / pt.cols;
+			scaleY = (63 - UP_CUT + rstPoint.y * alpha) / pt.rows;
+			device->comMoveToScale(scaleX, scaleY);
+			device->comHitDown();
 
-				Sleep(2 * 1000);
-				scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (matchedPics[i].index % mode))) / 2) / pt.cols;
-				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (matchedPics[i].index / mode))) / 2 - UP_CUT) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-				Sleep(2 * 1000);
-				
-				qDebug() << "successfully moved matched pic" << endl;
-				device->comMoveToScale(0, 0);//return original pos
-				Sleep(3 * 1000);
-				moved_pics_cnt++;
-				if (moved_pics_cnt == 2*mode) break;
-			}
+			Sleep(2 * 1000);
+			scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2) / pt.cols;
+			scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2 - UP_CUT) / pt.rows;
+			device->comMoveToScale(scaleX, scaleY);
+			device->comHitUp();
+			Sleep(2 * 1000);
+			
+			qDebug() << "successfully moved matched pic" << endl;
+			device->comMoveToScale(0, 0);//return original pos
+			Sleep(3 * 1000);
 		}
+		
+		// 检验img是不是实时更新的
+		cv::imwrite("frame_after_translated.png", img);
+		// cv::imwrite("frame.png", frame);
+
+		// 注意事实上我只是把匹配到的那张图移动到了cnt的位置，但是该图片可能并不真正的编号cnt的子块哦
+		// 所以我们在增加一段代码，在原地匹配并移动该图片
+		int tmp_cnt;
+		match_template_1_pic_to_multi_pic(mode, seg_cnt, tmp_cnt);
+
+		if (tmp_cnt != seg_cnt) {
+			
+			scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2) / pt.cols;
+			scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2 - UP_CUT) / pt.rows;
+			device->comMoveToScale(scaleX, scaleY);
+			device->comHitDown();
+
+			Sleep(2 * 1000);
+			scaleX = ( 7 + ((double)X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2) / pt.cols;
+			scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2 - UP_CUT) / pt.rows;
+			device->comMoveToScale(scaleX, scaleY);
+			device->comHitUp();
+			Sleep(2 * 1000);
+			
+			qDebug() << "successfully moved matched pic" << endl;
+			device->comMoveToScale(0, 0);//return original pos
+			Sleep(3 * 1000);
+		}
+		else
+			seg_cnt++;
+
 
 		int remainedPics = 0;
 		for (int i = 0; i < mode*mode; ++i) {
 			if (finishedPic[i] == false) remainedPics++;
 		}
-		if (remainedPics <= 3) {
-			if (checkUpMargin()) {
-				// move up pics
-				
-				scaleX = (7 + (boundRectUp[0].tl().x + boundRectUp[0].br().x)/2* alpha) / pt.cols;
-				scaleY = (63 - UP_CUT + (boundRectUp[0].tl().y + boundRectUp[0].br().y)/2 * alpha) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();
-
-				Sleep(2000);
-				scaleX = (7 + 540/2) / pt.cols;
-				scaleY = (63 + 518/2/2) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-				Sleep(2 * 1000);
-
-				qDebug() << "successfully checked up pics" << endl;
-				device->comMoveToScale(0, 0);//return original pos
-				Sleep(3 * 1000);
-			}
-			if (checkDownMargin()) {
-				scaleX = (7 + (boundRectDown[0].tl().x + boundRectDown[0].br().x) / 2 * alpha) / pt.cols;
-				scaleY = (63 - UP_CUT + 1411/2+(boundRectDown[0].tl().y + boundRectDown[0].br().y) / 2 * alpha) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();
-
-				Sleep(2000);
-				scaleX = (7 + 540 / 2) / pt.cols;
-				scaleY = (63 + (1920 + 1411) / 2 / 2) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-				Sleep(2 * 1000);
-
-				qDebug() << "successfully checked up pics" << endl;
-				device->comMoveToScale(0, 0);//return original pos
-				Sleep(3 * 1000);
-			}
-
-		}
+		
 
 	}
 	
@@ -262,6 +259,83 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 }
 
 /****************模板匹配***************/
+void match_template_1_pic_to_multi_pic(int mode, int seg_cnt, int &tmp_cnt){
+	// 计算seg_cnt的位置，并裁切
+	Mat src, result, seg;
+	frame = imread("frame.png");
+	
+	double xi0, yi0;
+	xi0 = X0 + d * (1 + 2.0 * (seg_cnt % mode));
+	yi0 = Y0 + d * (1 + 2.0 * (seg_cnt / mode));
+	xi0 /= 2; yi0 /= 2;
+
+	src = frame( Rect( Point(xi0, yi0), Size(d*1.5/2, d*1.5/2) ) );
+
+	// 全部子块都放进来匹配，比较谁的相似度最高
+	string num = "00";
+	double* minValues = new double[mode*mode];
+	for (int seg_num = 0; seg_num < mode*mode; ++seg_num) {
+		// 切出seg
+		num[0] = '0' + seg_num / 10;
+		num[1] = '0' + seg_num % 10;
+		file_seg[file_seg.length() - 6] = num[0];
+		file_seg[file_seg.length() - 5] = num[1];
+		seg = imread(file_seg);
+		resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
+
+		// 匹配 seg 与 src
+		matchTemplate(src, seg, result, TM_SQDIFF);
+		normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+		double minVal; double maxVal; Point minLoc; Point maxLoc; Point matchLoc;
+		minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+		minVal = fabs(minVal);
+		matchLoc = minLoc;
+
+		// 保存minVal
+		minValues[seg_num] = minVal;
+	}
+	
+	// 找到最大的值
+	double maxNum = *std::max_element(minValues, minValues + mode * mode);
+  	tmp_cnt = std::find(minValues, minValues + mode * mode, maxNum) - minValues;
+}
+
+void match_template_1_pic_to_1_pic(int mode, int seg_num) {
+	// 切出src
+	Mat src, seg, result, src_display;
+	src = frame;
+	resize(src, src, Size(src.cols / alpha, src.rows / alpha));
+	src.copyTo(src_display);
+
+	// 切出seg
+	string num = "00";	
+	num[0] = '0' + seg_num / 10;
+	num[1] = '0' + seg_num % 10;
+	file_seg[file_seg.length() - 6] = num[0];
+	file_seg[file_seg.length() - 5] = num[1];
+	seg = imread(file_seg);
+	resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
+
+	// 匹配src与seg
+	matchTemplate(src, seg, result, TM_SQDIFF);
+	normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+	double minVal; double maxVal; Point minLoc; Point maxLoc; Point matchLoc;
+	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+	minVal = fabs(minVal);
+	matchLoc = minLoc;
+
+	// 保存匹配结果rstPoint
+	resultPoints[seg_num] = Point(matchLoc.x + seg.cols / 2, matchLoc.y + seg.rows / 2);
+	rectangle(src_display, matchLoc, Point(matchLoc.x + seg.cols, matchLoc.y + seg.rows), Scalar::all(255), 2, 8, 0);
+	putText(src_display, num, Point(matchLoc.x, matchLoc.y + seg.rows / 1.5), 6, 1, Scalar(255, 0, 255), 2);
+
+	// 显示匹配结果
+	cv::imwrite(file_final, src_display);
+	namedWindow(file_final);
+	imshow(file_final, src_display);
+}
+
+
 void match_template(int mode) {
 	Mat src, seg, result, src_display;
 
@@ -452,10 +526,6 @@ bool checkUpMargin() {
 	}
 
 	return true;
-}
-
-int diff_pics(Mat& src, Mat& tmp) {
-	return cv::sum(cv::abs(src - tmp))[0];
 }
 
 void updateFilenames(int mode)
