@@ -149,65 +149,29 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		// 进入游戏运行状态
 		qDebug() << "GAME_IN: successfully matched " << success_game_in_cnt << " time" << endl;
 
-		// 匹配一下seg_cnt, 找到匹配位置
+		// 匹配一下seg_cnt, 找到匹配位置rstPoint
 		find_seg_k_in_src(seg_cnt, rstPoint);
 
-		// 注意这部分第二次进来时才会调用，这时候frame已经被更新了
-		// 我们在原地检查该图片，如果不正确还要拖到正确位置
-		// 首先要确保是第二次进入main, 这样frame是更新了的
-		if (second_in_main_func) {
+		for (int i = ( ( success_game_in_cnt - 1 ) % mode ) * mode; i < mode * mode; ++i) {
+			if (finishedPic[i] == false) {
 
-			qDebug() << "SecondInMainFunc: " << endl;
-			int tmp_cnt;
-			find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
+				scaleX = (7 + rstPoint.x * alpha) / pt.cols;
+				scaleY = (63 - UP_CUT + rstPoint.y * alpha) / pt.rows;
+				device->comMoveToScale(scaleX, scaleY);
+				device->comHitDown();
 
-			if (tmp_cnt != seg_cnt) {
-
+				Sleep(2 * 1000);
 				scaleX = (7 + ((double)X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2) / pt.cols;
 				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2 - UP_CUT) / pt.rows;
 				device->comMoveToScale(scaleX, scaleY);
 				device->comHitDown();
 
-				Sleep(2 * 1000);
-				scaleX = (7 + ((double)X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2) / pt.cols;
-				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2 - UP_CUT) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-				Sleep(2 * 1000);
-
-				qDebug() << "successfully moved matched pic" << endl;
 				device->comMoveToScale(0, 0);//return original pos
 				Sleep(3 * 1000);
+
+				moved_seg_cnt++;
+				if (moved_seg_cnt == 2 * mode) break;
 			}
-			else
-				seg_cnt++;
-
-			second_in_main_func = false;
-		}
-
-		// 注意这部分第一次进来时才会调用，第二次不会了。
-		// 我现在要移动第cnt块seg
-		seg_cnt %= 16;
-		if (finishedPic[seg_cnt] == false && !second_in_main_func) {
-
-			qDebug() << "FirstInMainFunc: " << endl;
-			scaleX = (7 + rstPoint.x * alpha) / pt.cols;
-			scaleY = (63 - UP_CUT + rstPoint.y * alpha) / pt.rows;
-			device->comMoveToScale(scaleX, scaleY);
-			device->comHitDown();
-
-			Sleep(2 * 1000);
-			scaleX = (7 + ((double)X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2) / pt.cols;
-			scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2 - UP_CUT) / pt.rows;
-			device->comMoveToScale(scaleX, scaleY);
-			device->comHitUp();
-			Sleep(2 * 1000);
-
-			qDebug() << "successfully moved matched pic" << endl;
-			device->comMoveToScale(0, 0);//return original pos
-			Sleep(3 * 1000);
-
-			second_in_main_func = true;
 		}
 
 		int remainedPics = 0;
@@ -346,7 +310,7 @@ void match_template() {
 	similarityArr = new double[mode*mode];
 	for (int i = 0; i < mode*mode; ++i) {
 
-		seg = imread(file_seg, IMREAD_COLOR);
+		seg = imread(file_seg);
 		resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
 
 		// 匹配src与seg
