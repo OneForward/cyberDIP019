@@ -31,14 +31,14 @@ const int mode = 8;// 8*8=64模式
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 1e6 };
-double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 2e6 };
+double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 2e6 };
 
 int success_game_in_cnt = 0;
 int seg_cnt = 0;
 int tmp_cnt;
 int not_match_cnt = 0;
-int remainedPics = 0;
+int remainedPics = mode * mode;
 
 double alpha = 2.5;
 double scaleX, scaleY;
@@ -153,10 +153,12 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		qDebug() << "GAME_IN: successfully matched " << success_game_in_cnt << " time" << endl;
 		
 		matchVal = check_match(seg_cnt, seg_cnt);
+		cout << " cnt =  " << seg_cnt << "\tmatchValToSeg = " << matchVal << endl;
 		if (matchVal > matchValsCntToSeg[mode]) { // 说明这里有错误
 			cout << " 这里有错误 " << endl;
 			matchVal = check_match(seg_cnt, -1);
-			if (matchVal > matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
+			cout << " cnt =  " << seg_cnt << "\tmatchValToNull = " << matchVal << endl;
+			if (matchVal < matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
 				cout << " 这里是被别的子图误占了 " << endl;
 				find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
 				find_seg_k_in_src(tmp_cnt, rstLoc);
