@@ -30,7 +30,7 @@ private:
 
 	/*********/
 	int counter;
-
+	void move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt);
 public:
 	//构造函数，所有变量的初始化都应在此完成
 	usrGameController(void* qtCD);
@@ -44,6 +44,5 @@ public:
 //鼠标回调函数
 void  mouseCallback(int event, int x, int y, int flags, void*param);
 //以上是为了实现课堂演示效果，增加的内容
-
 #endif
 #endif

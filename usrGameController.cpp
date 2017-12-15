@@ -24,7 +24,9 @@ enum {
 	GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS
 } STATE;
 
-const int mode = 5;// 8*8=64模式
+enum { CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
+
+const int mode = 8;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
@@ -32,21 +34,17 @@ double d = (X1 - X0) / 2.0 / mode;
 double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 1e6 };
 double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 1e6 };
 
-bool second_in_main_func = false;
 int success_game_in_cnt = 0;
 int seg_cnt = 0;
 int tmp_cnt;
 int not_match_cnt = 0;
+int remainedPics = 0;
+
 double alpha = 2.5;
 double scaleX, scaleY;
 double minVal; double maxVal;
-Point minLoc; Point maxLoc; Point matchLoc;
-Point* resultPoints = new Point[mode*mode];
-Point rstLoc;
-resultpt *matchedPics;
-double *similarityArr;
+Point minLoc; Point maxLoc; Point matchLoc; Point rstLoc; Point endLoc;
 ofstream out("E:/qtdipdata.txt");
-Mat frame;
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
 file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png");
@@ -54,17 +52,15 @@ bool* finishedPics = new bool[mode*mode];
 bool initFinishedPics(false);
 string num = "00";
 double matchVal;
-vector<vector<Point> > contours_poly_up;
-vector<vector<Point> > contours_poly_down;
-vector<Rect> boundRectDown;
-vector<Rect> boundRectUp;
+Mat frame;
 
 void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 	Point& minLoc, Point& maxLoc, Point& matchLoc);
 void find_seg_k_in_src(int seg_num, Point& rstLoc);
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt);
-void checkMatchedState();
+void checkFrameState();
 bool checkSuccess();
+bool checkMargin(int);
 void updateFilenames(int seg_num);
 double check_match(int& cnt, int);
 
@@ -115,7 +111,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		{
 			device->comHitDown();
 		}
-
+		cout << argM.box << endl;
 		device->comMoveToScale(((double)argM.box.x + argM.box.width) / pt.cols,
 			((double)argM.box.y + argM.box.height) / pt.rows);
 		argM.box.x = -1; argM.box.y = -1;
@@ -132,6 +128,14 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 
 
+
+
+
+
+
+
+
+
 	/*************以下为我添加的代码******************/
 	
 	updateFilenames(mode);
@@ -142,7 +146,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	cv::imwrite("frame.png", frame);
 	
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	checkMatchedState();
+	checkFrameState();
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
@@ -150,58 +154,60 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		
 		matchVal = check_match(seg_cnt, seg_cnt);
 		if (matchVal > matchValsCntToSeg[mode]) { // 说明这里有错误
-
+			cout << " 这里有错误 " << endl;
 			matchVal = check_match(seg_cnt, -1);
 			if (matchVal > matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
-
+				cout << " 这里是被别的子图误占了 " << endl;
 				find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
 				find_seg_k_in_src(tmp_cnt, rstLoc);
 
-				scaleX = (7 + rstLoc.x * alpha) / pt.cols;
-				scaleY = (63 - UP_CUT + rstLoc.y * alpha) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();
-
-				Sleep(2 * 1000);
-				scaleX = (7 + ((double)X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2) / pt.cols;
-				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2 - UP_CUT) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-
-				device->comMoveToScale(0, 0);//return original pos
-				Sleep(3 * 1000);
-				
+				endLoc = Point( (X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0, 
+								(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0 );
+				move_from_to(rstLoc, endLoc, pt);
+				cout << "rstLoc: " << rstLoc << endl;
 			}
 
 			else { // 说明这里还是空的
-
+				cout << " 这里这里还是空的 " << endl;
 				// 匹配一下seg_cnt, 找到匹配位置rstLoc
 				find_seg_k_in_src(seg_cnt, rstLoc);
 
-				scaleX = (7 + rstLoc.x * alpha) / pt.cols;
-				scaleY = (63 - UP_CUT + rstLoc.y * alpha) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitDown();
-
-				Sleep(2 * 1000);
-				scaleX = (7 + ((double)X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2) / pt.cols;
-				scaleY = (63 + ((double)Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2 - UP_CUT) / pt.rows;
-				device->comMoveToScale(scaleX, scaleY);
-				device->comHitUp();
-
-				device->comMoveToScale(0, 0);//return original pos
-				Sleep(3 * 1000);
+				endLoc = Point( (X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
+								(Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2.0 );
+				move_from_to(rstLoc, endLoc, pt); 
+				cout << "rstLoc: " << rstLoc << endl;
 			}
 			not_match_cnt++;
 		}
-		else { // 说明这里没有错误，我们检查记录一下成功子块标号
+		else { // 说明这里没有错误，我们记录一下成功子块标号
+			cout << " 这里没有错误，我们记录一下成功子块标号 " << endl;
 			finishedPics[seg_cnt] = true;
 			seg_cnt++; seg_cnt %= mode * mode;
 		}
 
 		if (not_match_cnt == 2) { // 避免一直在not_match的那几个区域之间陷入循环
+			cout << " 避免一直在not_match的那几个区域之间陷入循环 " << endl;
 			seg_cnt++; seg_cnt %= mode * mode;
 			not_match_cnt = 0;
+		}
+
+		if (remainedPics <= mode) { // 当余下的图片较少时，开始检查上下边缘
+			cout << " 当余下的图片较少时，开始检查上下边缘 " << endl;
+			if ( checkMargin(CHECK_UP_MARGIN) ) { // move up_margin_pics
+				
+				cout << "rstLoc: " << rstLoc << endl;
+				endLoc = Point(540 / 2, Y0 / 2 / 2);
+				move_from_to(rstLoc, endLoc, pt);
+				qDebug() << "successfully check up marginal pics" << endl;
+			}
+			if ( checkMargin(CHECK_BOTTOM_MARGIN) ) { // move bottom_margin_pics
+				
+				cout << "rstLoc: " << rstLoc << endl;
+				endLoc = Point(540 / 2, (1920 + Y1) / 2 / 2);
+				move_from_to(rstLoc, endLoc, pt);
+				qDebug() << "successfully checked bottom marginal pics" << endl;
+			}
+
 		}
 
 		// 检查我们是不是成功啦啦啦啦
@@ -252,6 +258,26 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 	}
 	break;
 	}
+}
+
+/*********************移动机械臂*********************/
+void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt) {
+
+	scaleX = (7 + fromLoc.x * alpha) / pt.cols;
+	scaleY = (63 - UP_CUT + fromLoc.y * alpha) / pt.rows;
+	device->comMoveToScale(scaleX, scaleY);
+	device->comHitDown();
+
+	Sleep(2 * 1000);
+	scaleX = (7 + toLoc.x * alpha) / pt.cols;
+	scaleY = (63 - UP_CUT + toLoc.y * alpha) / pt.rows;
+	device->comMoveToScale(scaleX, scaleY);
+	device->comHitUp();
+	Sleep(2 * 1000);
+
+	qDebug() << "successfully moved pics" << endl;
+	device->comMoveToScale(0, 0); // 返回原点
+	Sleep(3 * 1000);
 }
 
 /****************模板匹配***************/
@@ -307,7 +333,6 @@ void find_seg_k_in_src(int seg_num, Point& rstLoc) {
 
 	// 保存匹配结果rstLoc
 	rstLoc = Point(matchLoc.x + seg.cols / 2, matchLoc.y + seg.rows / 2);
-	resultPoints[seg_num] = rstLoc;
 	rectangle(src_display, matchLoc, Point(matchLoc.x + seg.cols, matchLoc.y + seg.rows), Scalar::all(255), 2, 8, 0);
 	putText(src_display, num, Point(matchLoc.x, matchLoc.y + seg.rows / 1.5), 6, 1, Scalar(255, 0, 255), 2);
 
@@ -327,6 +352,47 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 
 }
 
+/*****************对上下边缘的检查************************/
+bool checkMargin(int CHECK_UP_OR_DOWN) {
+	
+	Mat A = imread("frame.png"), AA = imread(file_init);
+	resize(AA, AA, A.size());
+	Mat C = cv::abs(A - AA);
+	
+	Mat MarginPic;
+	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)
+		MarginPic = C(Rect(Point(0, 0), Point(540 - 5, Y0 / 2 - 10)));
+	else
+		MarginPic = C(Rect(Point(0, Y1 / 2 + 15), Point(540 - 5, 960 - 10)));
+	
+	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
+	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
+	erode(MarginPic, MarginPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
+
+	Mat threshold_output = MarginPic;
+	vector< vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+
+	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	if (contours.size() == 0) return false;
+
+	// 获取 bounded Rect 及其 center 坐标
+	vector< vector<Point> >  contours_poly(contours.size());
+	for (int i = 0; i < contours.size(); ++i) {
+		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
+		Rect bddRect = boundingRect(Mat(contours_poly[i]));
+		if (bddRect.area() > 2000) {
+
+			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
+			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; break;
+		}
+	}
+
+	if (CHECK_UP_OR_DOWN == CHECK_BOTTOM_MARGIN) // 注意如果是下边缘检查时y坐标要加上剪切常数
+		rstLoc.y += Y1 / 2 + 15;
+	
+	return true;
+}
 
 /****************判断当前状态***************/
 double check_match(int& cnt, int pic_num) {
@@ -361,7 +427,7 @@ double check_match(int& cnt, int pic_num) {
 	return minVal;
 }
 
-void checkMatchedState() {
+void checkFrameState() {
 
 	Mat  templ, result;
 	frame = imread("frame.png");
@@ -398,10 +464,12 @@ bool checkSuccess() {
 
 	if (STATE != GAME_IN) return false;
 
+	remainedPics = 0;
 	for (int i = 0; i < mode*mode; ++i)
-		if (!finishedPics[i]) return false;
-
-	return true;
+		if (!finishedPics[i]) remainedPics++;
+	
+	if (remainedPics == 0)	return true;
+	else return false;
 }
 
 void updateFilenames(int seg_num = 0)
