@@ -24,15 +24,15 @@ enum {
 	GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS
 } STATE;
 
-enum { CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
+enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
 
-const int mode = 8;// 8*8=64模式
+const int mode = 7;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 2e6 };
-double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 1e6, 2e6 };
+double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 4e6, 1e6 };
+double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
 int seg_cnt = 0;
@@ -43,7 +43,7 @@ int remainedPics = mode * mode;
 double alpha = 2.5;
 double scaleX, scaleY;
 double minVal; double maxVal;
-Point minLoc; Point maxLoc; Point matchLoc; Point rstLoc; Point endLoc;
+Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc;
 ofstream out("E:/qtdipdata.txt");
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
@@ -56,8 +56,9 @@ Mat frame;
 
 void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 	Point& minLoc, Point& maxLoc, Point& matchLoc);
-void find_seg_k_in_src(int seg_num, Point& rstLoc);
+void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE = CHECK_ALL);
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt);
+void find_pos_cnt_in_seg_all(Point& pos, int &seg_cnt);
 void checkFrameState();
 bool checkSuccess();
 bool checkMargin(int);
@@ -137,84 +138,120 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 
 	/*************以下为我添加的代码******************/
-	
+	cout << "当前拼图模式为 mode = " << mode << endl;
 	updateFilenames(mode);
 
 	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
 	// 要根据实际Total control窗口的大小调整, 此处为552x1078
 	frame = img(Rect(7, 63, 540, 960));
 	cv::imwrite("frame.png", frame);
-	
+
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	checkFrameState();
+	//checkFrameState();
+	STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
-		qDebug() << "GAME_IN: successfully matched " << success_game_in_cnt << " time" << endl;
-		
+		cout << "GAME_IN: 成功进入游戏运行状态 " << endl;
+
 		matchVal = check_match(seg_cnt, seg_cnt);
-		cout << " cnt =  " << seg_cnt << "\tmatchValToSeg = " << matchVal << endl;
+		cout << " 目前考察第 cnt =  " << seg_cnt << " 个区域的子块\tmatchValToSeg = " << matchVal << endl;
 		if (matchVal > matchValsCntToSeg[mode]) { // 说明这里有错误
+			
 			cout << " 这里有错误 " << endl;
 			matchVal = check_match(seg_cnt, -1);
 			cout << " cnt =  " << seg_cnt << "\tmatchValToNull = " << matchVal << endl;
-			if (matchVal < matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
+			
+			if (matchVal > matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
+				
 				cout << " 这里是被别的子图误占了 " << endl;
 				find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
 				find_seg_k_in_src(tmp_cnt, rstLoc);
+				cout << "终点位置坐标rstLoc: " << rstLoc << endl << endl;
 
-				endLoc = Point( (X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0, 
-								(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0 );
-				move_from_to(rstLoc, endLoc, pt);
-				cout << "rstLoc: " << rstLoc << endl;
+				fromLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
+					(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
+				move_from_to(fromLoc, rstLoc, pt);
+				
 			}
 
 			else { // 说明这里还是空的
+				
 				cout << " 这里这里还是空的 " << endl;
 				// 匹配一下seg_cnt, 找到匹配位置rstLoc
 				find_seg_k_in_src(seg_cnt, rstLoc);
+				cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
 
-				endLoc = Point( (X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
-								(Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2.0 );
-				move_from_to(rstLoc, endLoc, pt); 
-				cout << "rstLoc: " << rstLoc << endl;
+				endLoc = Point((X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
+					(Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2.0);
+				move_from_to(rstLoc, endLoc, pt);
+				
 			}
 			not_match_cnt++;
 		}
 		else { // 说明这里没有错误，我们记录一下成功子块标号
+			
 			cout << " 这里没有错误，我们记录一下成功子块标号 " << endl;
 			finishedPics[seg_cnt] = true;
-			seg_cnt++; seg_cnt %= mode * mode;
+			seg_cnt++; seg_cnt %= mode * mode; not_match_cnt = 0;
 		}
 
 		if (not_match_cnt == 2) { // 避免一直在not_match的那几个区域之间陷入循环
+			
 			cout << " 避免一直在not_match的那几个区域之间陷入循环 " << endl;
 			seg_cnt++; seg_cnt %= mode * mode;
 			not_match_cnt = 0;
 		}
 
 		if (remainedPics <= mode) { // 当余下的图片较少时，开始检查上下边缘
+			
 			cout << " 当余下的图片较少时，开始检查上下边缘 " << endl;
-			if ( checkMargin(CHECK_UP_MARGIN) ) { // move up_margin_pics
-				
-				cout << "rstLoc: " << rstLoc << endl;
+			if (checkMargin(CHECK_UP_MARGIN)) { // 移动上边缘子块
+
+				cout << " 移动上边缘子块 " << endl;
+				cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
 				endLoc = Point(540 / 2, Y0 / 2 / 2);
-				move_from_to(rstLoc, endLoc, pt);
-				qDebug() << "successfully check up marginal pics" << endl;
-			}
-			if ( checkMargin(CHECK_BOTTOM_MARGIN) ) { // move bottom_margin_pics
+				if (abs(rstLoc.x - endLoc.x) + abs(rstLoc.y - endLoc.y) > 100)
+					move_from_to(rstLoc, endLoc, pt);
 				
-				cout << "rstLoc: " << rstLoc << endl;
+				else {
+
+					cout << " 将在上边缘中间等待的子块移至该去的位置 " << endl;
+					find_pos_cnt_in_seg_all(rstLoc, tmp_cnt);
+					find_seg_k_in_src(tmp_cnt, rstLoc, CHECK_UP_MARGIN);
+					cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
+
+					endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
+						(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
+					move_from_to(rstLoc, endLoc, pt);
+				}
+			}
+			if (checkMargin(CHECK_BOTTOM_MARGIN)) { //  移动下边缘子块
+
+				cout << " 移动下边缘子块 " << endl;
+				cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
 				endLoc = Point(540 / 2, (1920 + Y1) / 2 / 2);
-				move_from_to(rstLoc, endLoc, pt);
-				qDebug() << "successfully checked bottom marginal pics" << endl;
+				if (abs(rstLoc.x - endLoc.x) + abs(rstLoc.y - endLoc.y) > 100)
+					move_from_to(rstLoc, endLoc, pt);
+
+				else {
+
+					cout << " 将在上边缘中间等待的子块移至该去的位置 " << endl;
+					find_pos_cnt_in_seg_all(rstLoc, tmp_cnt);
+					find_seg_k_in_src(tmp_cnt, rstLoc, CHECK_BOTTOM_MARGIN);
+					cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
+
+					endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
+						(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
+					move_from_to(rstLoc, endLoc, pt);
+				}
 			}
 
 		}
 
 		// 检查我们是不是成功啦啦啦啦
-		if ( checkSuccess() )  
-			qDebug() << "ALL matched success" << endl,
+		if (checkSuccess())
+			cout << "ALL matched success" << endl,
 			system("pause");
 	}
 
@@ -265,24 +302,51 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 /*********************移动机械臂*********************/
 void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt) {
 
-	scaleX = (7 + fromLoc.x * alpha) / pt.cols;
-	scaleY = (63 - UP_CUT + fromLoc.y * alpha) / pt.rows;
-	device->comMoveToScale(scaleX, scaleY);
+	scaleX = (7.0 + fromLoc.x) / pt.cols;
+	scaleY = (63.0 - UP_CUT + fromLoc.y) / pt.rows;
+	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
+	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
 	device->comHitDown();
 
-	Sleep(2 * 1000);
-	scaleX = (7 + toLoc.x * alpha) / pt.cols;
-	scaleY = (63 - UP_CUT + toLoc.y * alpha) / pt.rows;
-	device->comMoveToScale(scaleX, scaleY);
+	Sleep(1.5 * 1000);
+	scaleX = (7.0 + toLoc.x) / pt.cols;
+	scaleY = (63.0 - UP_CUT + toLoc.y) / pt.rows;
+	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
+	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
 	device->comHitUp();
-	Sleep(2 * 1000);
+	Sleep(1.5 * 1000);
 
-	qDebug() << "successfully moved pics" << endl;
 	device->comMoveToScale(0, 0); // 返回原点
-	Sleep(3 * 1000);
+	Sleep(1.5 * 1000);
 }
 
 /****************模板匹配***************/
+void find_pos_cnt_in_seg_all(Point& pos, int &seg_cnt) {
+	
+	Mat src, seg, result;
+	double dSize = d;
+	src = frame(Rect(pos - Point(d/2, d/2), Size(dSize, dSize)));
+
+	// 全部子块都放进来匹配，比较谁的相似度最高
+	double* minValues = new double[mode*mode];
+	for (int seg_num = 0; seg_num < mode*mode; ++seg_num) {
+		// 切出seg
+		updateFilenames(seg_num);
+		seg = imread(file_seg);
+		cv::resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
+
+		// 匹配src与seg
+		_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+
+		// 保存minVal
+		minValues[seg_num] = minVal;
+	}
+
+	// 找到最小的值
+	double maxNum = *std::min_element(minValues, minValues + mode * mode);
+	seg_cnt = std::find(minValues, minValues + mode * mode, maxNum) - minValues;
+}
+
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt) {
 	// 计算seg_cnt的位置，并裁切
 	Mat src, result, seg;
@@ -303,7 +367,7 @@ void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt) {
 		// 切出seg
 		updateFilenames(seg_num);
 		seg = imread(file_seg);
-		resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
+		cv::resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
 
 		// 匹配src与seg
 		_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
@@ -315,20 +379,25 @@ void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt) {
 	// 找到最大的值
 	double maxNum = *std::min_element(minValues, minValues + mode * mode);
 	tmp_cnt = std::find(minValues, minValues + mode * mode, maxNum) - minValues;
-	qDebug() << "tmp_cnt = " << tmp_cnt << endl;
 }
 
-void find_seg_k_in_src(int seg_num, Point& rstLoc) {
+void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE) {
 	// 切出src
 	Mat src, seg, result, src_display;
-	src = frame;
+	src = imread("frame.png");
 	src.copyTo(src_display);
-	resize(src, src, Size(src.cols / alpha, src.rows / alpha));
+
+	switch (CHECK_TYPE) {
+	case CHECK_UP_MARGIN: src = src(Rect(0, 0, 540, Y0 / 2)); break;
+	case CHECK_BOTTOM_MARGIN: src = src(Rect(0, Y1 / 2, 540, 960)); break;
+	}
+	cv::resize(src, src, Size(src.cols / alpha, src.rows / alpha));
+	
 
 	// 切出seg
 	updateFilenames(seg_num);
 	seg = imread(file_seg);
-	resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
+	cv::resize(seg, seg, Size(seg.cols / alpha / 2, seg.rows / alpha / 2));
 
 	// 匹配src与seg
 	_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
@@ -338,10 +407,14 @@ void find_seg_k_in_src(int seg_num, Point& rstLoc) {
 	rectangle(src_display, matchLoc, Point(matchLoc.x + seg.cols, matchLoc.y + seg.rows), Scalar::all(255), 2, 8, 0);
 	putText(src_display, num, Point(matchLoc.x, matchLoc.y + seg.rows / 1.5), 6, 1, Scalar(255, 0, 255), 2);
 
+	rstLoc *= alpha;
+	if (CHECK_TYPE == CHECK_BOTTOM_MARGIN)
+		rstLoc += Point(0, Y1 / 2);
+
 	// 显示匹配结果
-	cv::imwrite(file_final, src_display);
-	namedWindow(file_final);
-	imshow(file_final, src_display);
+	//cv::imwrite(file_final, src_display);
+	//namedWindow(file_final);
+	//imshow(file_final, src_display);
 }
 
 void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
@@ -356,17 +429,17 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 
 /*****************对上下边缘的检查************************/
 bool checkMargin(int CHECK_UP_OR_DOWN) {
-	
+
 	Mat A = imread("frame.png"), AA = imread(file_init);
-	resize(AA, AA, A.size());
+	cv::resize(AA, AA, A.size());
 	Mat C = cv::abs(A - AA);
-	
+
 	Mat MarginPic;
 	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)
 		MarginPic = C(Rect(Point(0, 0), Point(540 - 5, Y0 / 2 - 10)));
 	else
 		MarginPic = C(Rect(Point(0, Y1 / 2 + 15), Point(540 - 5, 960 - 10)));
-	
+
 	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
 	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
 	erode(MarginPic, MarginPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
@@ -392,7 +465,7 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 
 	if (CHECK_UP_OR_DOWN == CHECK_BOTTOM_MARGIN) // 注意如果是下边缘检查时y坐标要加上剪切常数
 		rstLoc.y += Y1 / 2 + 15;
-	
+
 	return true;
 }
 
@@ -400,7 +473,7 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 double check_match(int& cnt, int pic_num) {
 	// 用于判断第cnt块区域与图片pic是否相似
 	// pic_num = -1 时表示与default匹配；其他表示与子块seg[pic_num]匹配
-	
+
 	// 把cntLoc区域切出来作为src
 	Mat src, seg, result;
 	frame = imread("frame.png");
@@ -411,17 +484,17 @@ double check_match(int& cnt, int pic_num) {
 
 	double dSize = d;
 	src = frame(Rect(Point(xi0 / 2 - dSize / 2, yi0 / 2 - dSize / 2), Size(dSize, dSize)));
-	
+
 	// 切出seg
 	updateFilenames(pic_num);
 	if (pic_num == -1) {
-		seg = imread(file_play); 
+		seg = imread(file_play);
 		seg = seg(Rect(Point(xi0 - dSize / 2, yi0 - dSize / 2), Size(dSize, dSize)));
 	}
-	else 
+	else
 		seg = imread(file_seg);
 
-	resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
+	cv::resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
 
 	// 匹配src与seg
 	_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
@@ -434,14 +507,14 @@ void checkFrameState() {
 	Mat  templ, result;
 	frame = imread("frame.png");
 	templ = imread(file_door);
-	resize(templ, templ, Size(540, 960));
+	cv::resize(templ, templ, Size(540, 960));
 	templ = templ(Rect(1, 1, 500, 900));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_DOOR minVal: " << minVal << endl;
 	if (minVal < 1e8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl;
 
 	templ = imread(file_init);
-	resize(templ, templ, Size(540, 960));
+	cv::resize(templ, templ, Size(540, 960));
 	templ = templ(Rect(0, 0, 500, 900));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_INIT minVal: " << minVal << endl;
@@ -455,16 +528,17 @@ void checkFrameState() {
 		STATE = GAME_IN,
 			qDebug() << "GAME_IN matched success" << endl;
 	}
-
-	// 初始化finishedPics[N]
-	if (!initFinishedPics)
-		for (int i = 0; i < mode*mode; ++i) finishedPics[i] = false;
-	initFinishedPics = true;
 }
 
 bool checkSuccess() {
 
 	if (STATE != GAME_IN) return false;
+
+	if (!initFinishedPics) {
+		for (int i = 0; i < mode*mode; ++i)
+			finishedPics[i] = false;
+		initFinishedPics = true;
+	}
 
 	remainedPics = 0;
 	for (int i = 0; i < mode*mode; ++i)
