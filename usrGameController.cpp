@@ -31,7 +31,7 @@ const int mode = 7;// 8*8=64模式
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 4e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 9e6, 1e6 };
 double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
@@ -166,12 +166,12 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				
 				cout << " 这里是被别的子图误占了 " << endl;
 				find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
-				find_seg_k_in_src(tmp_cnt, rstLoc);
+				find_seg_k_in_src(seg_cnt, rstLoc);
 				cout << "终点位置坐标rstLoc: " << rstLoc << endl << endl;
 
-				fromLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
+				endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
 					(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
-				move_from_to(fromLoc, rstLoc, pt);
+				move_from_to(rstLoc, endLoc, pt);
 				
 			}
 
@@ -236,7 +236,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 				else {
 
-					cout << " 将在上边缘中间等待的子块移至该去的位置 " << endl;
+					cout << " 将在下边缘中间等待的子块移至该去的位置 " << endl;
 					find_pos_cnt_in_seg_all(rstLoc, tmp_cnt);
 					find_seg_k_in_src(tmp_cnt, rstLoc, CHECK_BOTTOM_MARGIN);
 					cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
@@ -430,15 +430,16 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 /*****************对上下边缘的检查************************/
 bool checkMargin(int CHECK_UP_OR_DOWN) {
 
+	cout << "正在对上下边缘做检查" << endl;
 	Mat A = imread("frame.png"), AA = imread(file_init);
 	cv::resize(AA, AA, A.size());
 	Mat C = cv::abs(A - AA);
 
 	Mat MarginPic;
 	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)
-		MarginPic = C(Rect(Point(0, 0), Point(540 - 5, Y0 / 2 - 10)));
+		MarginPic = C(Rect(Point(0, 0), Point(540, Y0 / 2)));
 	else
-		MarginPic = C(Rect(Point(0, Y1 / 2 + 15), Point(540 - 5, 960 - 10)));
+		MarginPic = C(Rect(Point(0, Y1 / 2), Point(540, 960)));
 
 	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
 	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
@@ -452,10 +453,11 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 	if (contours.size() == 0) return false;
 
 	// 获取 bounded Rect 及其 center 坐标
+	Rect bddRect;
 	vector< vector<Point> >  contours_poly(contours.size());
 	for (int i = 0; i < contours.size(); ++i) {
 		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
-		Rect bddRect = boundingRect(Mat(contours_poly[i]));
+		bddRect = boundingRect(Mat(contours_poly[i]));
 		if (bddRect.area() > 2000) {
 
 			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
@@ -465,7 +467,14 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 
 	if (CHECK_UP_OR_DOWN == CHECK_BOTTOM_MARGIN) // 注意如果是下边缘检查时y坐标要加上剪切常数
 		rstLoc.y += Y1 / 2 + 15;
-
+	
+	cout << "bddRect: " << bddRect << endl;
+	cout << "rstLoc: " << rstLoc << endl;
+	/*rectangle(MarginPic, bddRect, Scalar::all(255), 5, 8, 0);
+	putText(MarginPic, num, rstLoc, 20, 2, Scalar(255, 0, 255), 2);
+	imshow("MarginPic", MarginPic);
+	waitKey(-1);
+	system("pause");*/
 	return true;
 }
 
