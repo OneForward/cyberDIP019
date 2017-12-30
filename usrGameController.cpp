@@ -33,8 +33,8 @@ const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 const int STOP_X = 1018, STOP_Y = 64, STOP_R = 87;
 Point STOP = Point(STOP_X, STOP_Y);
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 8e6, 4e6 };
-double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 1e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 3e7, 2e7, 3e7, 6e6, 6e6, 8e6, 4e6 };
+double matchValsCntToNull[] = { 0, 0, 1e7, 1.5e7, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
 int seg_cnt = 0;
@@ -147,17 +147,17 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 
 	/*************以下为我添加的代码******************/
-	cout << "当前拼图模式为 mode = " << mode << endl;
-	updateFilenames(mode);
+	//cout << "当前拼图模式为 mode = " << mode << endl;
+	//updateFilenames(mode);
 
-	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
-	// 要根据实际Total control窗口的大小调整, 此处为552x1078
+	//// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
+	//// 要根据实际Total control窗口的大小调整, 此处为552x1078
 	frame = img(Rect(7, 65, 540, 960));
 	cv::imwrite("frame.png", frame);
-
-	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	//checkFrameState(pt);
-	STATE = GAME_IN;
+	system("pause");
+	//// 先判别当前帧处于什么状态，开始游戏还是进行游戏
+	////checkFrameState(pt);
+	//STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
