@@ -21,7 +21,7 @@ struct resultpt {
 };
 enum {
 	GAME_SELECT01, GAME_SELECT02, GAME_SELECT03,
-	GAME_SELECT04, GAME_IN, GAME_SUCCESS
+	GAME_SELECT04, GAME_IN, GAME_STOP, GAME_SUCCESS
 } STATE;
 
 enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
@@ -48,12 +48,13 @@ double minVal; double maxVal;
 Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc, pos;
 ofstream out("E:/qtdipdata.txt");
 string	game_select01("E:/_pic/GAME_SELECT01.png"), game_select02("E:/_pic/GAME_SELECT02.png"),
-game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png");
+game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png"),
+game_stop("E:/_pic/GAME_STOP.png"),
+game_success01("E:/_pic/GAME_SUCCESS01.png"), game_success02("E:/_pic/GAME_SUCCESS02.png");;
 
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
-file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png"),
-file_success01("E:/_pic/SUCCESS01.png"), file_success02("E:/_pic/SUCCESS02.png");
+file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png");
 bool* finishedPics = new bool[mode*mode];
 bool initFinishedPics(false);
 string num = "00";
@@ -147,17 +148,17 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 
 	/*************以下为我添加的代码******************/
-	//cout << "当前拼图模式为 mode = " << mode << endl;
-	//updateFilenames(mode);
+	cout << "当前拼图模式为 mode = " << mode << endl;
+	updateFilenames(mode);
 
 	//// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
 	//// 要根据实际Total control窗口的大小调整, 此处为552x1078
 	frame = img(Rect(7, 65, 540, 960));
 	cv::imwrite("frame.png", frame);
-	system("pause");
+	//system("pause");
 	//// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	////checkFrameState(pt);
-	//STATE = GAME_IN;
+	//checkFrameState(pt);
+	STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
@@ -337,7 +338,6 @@ void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::M
 	device->comMoveToScale(0, 0); // 返回原点
 	Sleep(t * 1000);
 }
-
 
 void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
 
@@ -631,7 +631,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		click_at(clickLoc, _pt_global);
 	}
 
-	templ = imread(file_success01);
+	templ = imread(game_success01);
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_SUCCESS01 minVal: " << minVal << endl;
@@ -640,7 +640,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		qDebug() << "GAME_SUCCESS01 matched success" << endl;
 		system("pause");
 	}
-	templ = imread(file_success02);
+	templ = imread(game_success02);
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_SUCCESS02 minVal: " << minVal << endl;
@@ -650,6 +650,15 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		system("pause");
 	}
 
+	templ = imread(game_stop);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_STOP minVal: " << minVal << endl;
+	if (minVal < 1e9) {
+		STATE = GAME_STOP;
+		qDebug() << "GAME_STOP matched success" << endl;
+		click_at(STOP, _pt_global);
+	}
 }
 
 bool checkSuccess() {
