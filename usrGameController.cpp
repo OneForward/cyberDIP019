@@ -20,20 +20,20 @@ struct resultpt {
 		pt(_pt), index(_index), similarity(_sim) {}
 };
 enum {
-	JIGTY, GAME_SELECT01, GAME_SELECT02,
-	GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS
+	GAME_SELECT01, GAME_SELECT02, GAME_SELECT03,
+	GAME_SELECT04, GAME_IN, GAME_SUCCESS
 } STATE;
 
 enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
 
-const int mode = 7;// 8*8=64模式
+const int mode = 8;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 const int STOP_X = 1018, STOP_Y = 64, STOP_R = 87;
 Point STOP = Point(STOP_X, STOP_Y);
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 8e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 8e6, 4e6 };
 double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
@@ -47,6 +47,9 @@ double scaleX, scaleY;
 double minVal; double maxVal;
 Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc, pos;
 ofstream out("E:/qtdipdata.txt");
+string	game_select01("E:/_pic/GAME_SELECT01.png"), game_select02("E:/_pic/GAME_SELECT02.png"),
+game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png");
+
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
 file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png"),
@@ -63,7 +66,6 @@ void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE = CHECK_ALL);
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt);
 void find_who_is_at_pos(Point& pos, int &seg_cnt);
 void find_accurate_pos_at_pos(Point& pos, int &seg_cnt, Point& rstLoc);
-void checkFrameState();
 bool checkSuccess();
 bool checkMargin(int);
 void updateFilenames(int seg_num);
@@ -154,7 +156,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	cv::imwrite("frame.png", frame);
 
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	//checkFrameState();
+	//checkFrameState(pt);
 	STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
@@ -336,6 +338,22 @@ void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::M
 	Sleep(t * 1000);
 }
 
+
+void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
+
+	scaleX = (7.0 + loc.x) / pt.cols;
+	scaleY = ((double)loc.y) / pt.rows;
+	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
+	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
+	Sleep(1.5 * 1000);
+	device->comHitDown();
+	Sleep(100);
+	device->comHitUp();
+	Sleep(1.5 * 1000);
+	device->comMoveToScale(0, 0); // 返回原点
+	Sleep(1.5 * 1000);
+}
+
 /****************模板匹配***************/
 void find_who_is_at_pos(Point& pos, int &seg_cnt) {
 
@@ -450,7 +468,6 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 	Point& minLoc, Point& maxLoc, Point& matchLoc) {
 
 	matchTemplate(src, seg, result, TM_SQDIFF);
-	//normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 	minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
 	matchLoc = minLoc;
 
@@ -492,13 +509,13 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 
 			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
 			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; 
-			cout << "bddRect: " << bddRect << endl;
+			/*cout << "bddRect: " << bddRect << endl;
 			cout << "rstLoc: " << rstLoc << endl;
 			rectangle(MarginPic, bddRect, Scalar::all(255), 5, 8, 0);
 			putText(MarginPic, num, rstLoc, 20, 2, Scalar(255, 0, 255), 2);
 			imshow("MarginPic", MarginPic);
-			waitKey(-1);
-			system("pause");
+			waitKey(-1);*/
+			//system("pause");
 
 			hasMarginRect = true; break;
 		
@@ -544,32 +561,95 @@ double check_match(int& cnt, int pic_num) {
 	return minVal;
 }
 
-void checkFrameState() {
+void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 
 	Mat  templ, result;
 	frame = imread("frame.png");
-	templ = imread(file_door);
-	cv::resize(templ, templ, Size(540, 960));
-	templ = templ(Rect(1, 1, 500, 900));
-	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_DOOR minVal: " << minVal << endl;
-	if (minVal < 1e8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl;
+	resize(frame, frame, Size(540 / alpha, 960 / alpha));
 
-	templ = imread(file_init);
-	cv::resize(templ, templ, Size(540, 960));
-	templ = templ(Rect(0, 0, 500, 900));
+	templ = imread(game_select01);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_INIT minVal: " << minVal << endl;
-	if (minVal < 1e9) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl;
-
-	Mat in_square(frame, Rect(Point(X0 / 2, Y0 / 2), Point(X1 / 2, Y1 / 2)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
-	Mat in_square_templ = imread(file_in_square);
-	_match(in_square, in_square_templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_IN minVal: " << minVal << endl;
-	if (minVal < 6e9) {
-		STATE = GAME_IN,
-			qDebug() << "GAME_IN matched success" << endl;
+	qDebug() << "GAME_SELECT01 minVal: " << minVal << endl;
+	if (minVal < 1e9) {
+		STATE = GAME_SELECT01;
+		qDebug() << "GAME_SELECT01 matched success" << endl;
+		// Click the game icon on home screen
+		Point clickLoc = Point(672 / 2, 200 / 2);
+		click_at(clickLoc, _pt_global);
 	}
+
+	//templ = imread(game_select02);
+	//cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	//qDebug() << "GAME_SELECT_2 minVal: " << minVal << endl;
+	//if (minVal < 1e9) {
+	//	STATE = GAME_SELECT02;
+	//	qDebug() << "GAME_SELECT_2 matched success" << endl;
+	//	// selete FREE games
+	//	Point clickLoc = Point(794 / 2, 528 / 2);
+	//	click_at(clickLoc, _pt_global);
+	//}
+
+	//templ = imread(game_select03);
+	//cv::resize(templ, templ, Size(540, 960));
+	//templ = templ(Rect(1, 1, 500, 900));
+	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	//qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
+	//if (minVal < 1e8) {
+	//	STATE = GAME_SELECT03;
+	//	qDebug() << "GAME_SELECT03 matched success" << endl;
+	//	// selete the second puzzle
+	//	Point clickLoc = Point(816 / 2, 636 / 2);
+	//	click_at(clickLoc, _pt_global);
+	//}
+
+	//templ = imread(game_select03);
+	//cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	//qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
+	//if (minVal < 1e9) {
+	//	STATE = GAME_SELECT03;
+	//	qDebug() << "GAME_SELECT03 matched success" << endl;
+	//	// selete NEW GAME
+	//	Point clickLoc = Point(542 / 2, 1590 / 2);
+	//	click_at(clickLoc, _pt_global);
+	//}
+
+	templ = imread(game_select04);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_SELECT04 minVal: " << minVal << endl;
+	if (minVal < 1e9) {
+		STATE = GAME_SELECT04;
+		qDebug() << "GAME_SELECT04 matched success" << endl;
+		// select MODE-slider
+		Point clickLoc = Point((76 + 92 * (mode - 2)) / 2, 1366 / 2);
+		click_at(clickLoc, _pt_global);
+		// select PLAY
+		clickLoc = Point(554 / 2, 1706 / 2);
+		click_at(clickLoc, _pt_global);
+	}
+
+	templ = imread(file_success01);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_SUCCESS01 minVal: " << minVal << endl;
+	if (minVal < 1e9) {
+		STATE = GAME_SUCCESS;
+		qDebug() << "GAME_SUCCESS01 matched success" << endl;
+		system("pause");
+	}
+	templ = imread(file_success02);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_SUCCESS02 minVal: " << minVal << endl;
+	if (minVal < 1e9) {
+		STATE = GAME_SUCCESS;
+		qDebug() << "GAME_SUCCESS02 matched success" << endl;
+		system("pause");
+	}
+
 }
 
 bool checkSuccess() {

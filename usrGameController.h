@@ -32,7 +32,8 @@ private:
 	int counter;
 	void move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt);
 	void click_at(cv::Point& loc, cv::Mat& pt);
-	void checkFrameState();
+	void checkFrameState(cv::Mat& pt);
+
 
 public:
 	//构造函数，所有变量的初始化都应在此完成
