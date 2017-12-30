@@ -20,8 +20,8 @@ struct resultpt {
 		pt(_pt), index(_index), similarity(_sim) {}
 };
 enum {
-	GAME_SELECT01, GAME_SELECT02, GAME_SELECT03,
-	GAME_SELECT04, GAME_INIT, GAME_IN, GAME_SUCCESS
+	JIGTY, GAME_SELECT01, GAME_SELECT02,
+	GAME_DOOR, GAME_INIT, GAME_IN, GAME_SUCCESS
 } STATE;
 
 enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
@@ -30,8 +30,10 @@ const int mode = 7;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
+const int STOP_X = 1018, STOP_Y = 64, STOP_R = 87;
+Point STOP = Point(STOP_X, STOP_Y);
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 4e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 8e6, 1e6 };
 double matchValsCntToNull[] = { 0, 0, 0, 0, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
@@ -43,13 +45,12 @@ int remainedPics = mode * mode;
 double alpha = 2.5;
 double scaleX, scaleY;
 double minVal; double maxVal;
-Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc;
+Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc, pos;
 ofstream out("E:/qtdipdata.txt");
-string	game_select01("E:/_pic/GAME_SELECT01.png"), game_select02("E:/_pic/GAME_SELECT02.png"),
-game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png");
-string	file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
+string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
-file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png");
+file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png"),
+file_success01("E:/_pic/SUCCESS01.png"), file_success02("E:/_pic/SUCCESS02.png");
 bool* finishedPics = new bool[mode*mode];
 bool initFinishedPics(false);
 string num = "00";
@@ -60,14 +61,13 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 	Point& minLoc, Point& maxLoc, Point& matchLoc);
 void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE = CHECK_ALL);
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt);
-void find_pos_cnt_in_seg_all(Point& pos, int &seg_cnt);
-// void checkFrameState(); has been included into usrGameController class
+void find_who_is_at_pos(Point& pos, int &seg_cnt);
+void find_accurate_pos_at_pos(Point& pos, int &seg_cnt, Point& rstLoc);
+void checkFrameState();
 bool checkSuccess();
 bool checkMargin(int);
 void updateFilenames(int seg_num);
 double check_match(int& cnt, int);
-
-cv::Mat _pt_global;
 
 #ifdef VIA_OPENCV
 //构造与初始化
@@ -103,7 +103,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	}
 
 	//截取图像边缘
-	cv::Mat pt = img(cv::Rect(0, UP_CUT, imgSize.width, imgSize.height)); _pt_global = pt;
+	cv::Mat pt = img(cv::Rect(0, UP_CUT, imgSize.width, imgSize.height));
 	cv::imshow(WIN_NAME, pt);
 
 	//判断鼠标点击尺寸
@@ -112,25 +112,28 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		)
 	{
 		qDebug() << "X:" << argM.box.x << " Y:" << argM.box.y;
+		
+		cout << "argM.box" << argM.box << endl;
+		cout << "argM.Hit" << argM.Hit << endl;
+		cout << "argM.Drawing" << argM.Drawing << endl;
+		device->comMoveToScale(((double)argM.box.x + argM.box.width) / pt.cols,
+			((double)argM.box.y + argM.box.height) / pt.rows);
+		
+		argM.box.x = -1; argM.box.y = -1;
+		
 		if (argM.Hit)
 		{
 			device->comHitDown();
 		}
-		cout << argM.box << endl;
-		device->comMoveToScale(((double)argM.box.x + argM.box.width) / pt.cols,
-			((double)argM.box.y + argM.box.height) / pt.rows);
-		argM.box.x = -1; argM.box.y = -1;
-		if (argM.Hit)
-		{
-			device->comHitUp();
-		}
 		else
 		{
-			device->comHitOnce();
+			device->comHitOnce(); 
 		}
 	}
 
-
+	
+	//move_from_to(Point(332-7, 543), Point(339-7, 882), pt);
+	
 
 
 
@@ -147,14 +150,11 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
 	// 要根据实际Total control窗口的大小调整, 此处为552x1078
-	frame = img(Rect(7, 63, 540, 960));
+	frame = img(Rect(7, 65, 540, 960));
 	cv::imwrite("frame.png", frame);
 
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
 	//checkFrameState();
-	// Delay some time for next loop
-	//Sleep(3 * 1000);
-
 	STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
@@ -172,13 +172,15 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 			if (matchVal > matchValsCntToNull[mode]) { // 说明这里是被别的子图误占了
 
 				cout << " 这里是被别的子图误占了 " << endl;
-				find_seg_k_in_seg_all(seg_cnt, tmp_cnt);
-				find_seg_k_in_src(tmp_cnt, rstLoc);
-				cout << "终点位置坐标rstLoc: " << rstLoc << endl << endl;
+				pos = Point((X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
+					(Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2.0);
+				find_who_is_at_pos(pos, tmp_cnt);
+				find_accurate_pos_at_pos(pos, tmp_cnt, fromLoc);
+				cout << "起始点位置坐标fromLoc: " << fromLoc << endl << endl;
 
-				fromLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
+				endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
 					(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
-				move_from_to(fromLoc, rstLoc, pt);
+				move_from_to(fromLoc, endLoc, pt);
 
 			}
 
@@ -186,12 +188,12 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 				cout << " 这里这里还是空的 " << endl;
 				// 匹配一下seg_cnt, 找到匹配位置rstLoc
-				find_seg_k_in_src(seg_cnt, rstLoc);
-				cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
+				find_seg_k_in_src(seg_cnt, fromLoc);
+				cout << "初始位置坐标fromLoc: " << fromLoc << endl << endl;
 
 				endLoc = Point((X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
 					(Y0 + d * (1 + 2.0 * (seg_cnt / mode))) / 2.0);
-				move_from_to(rstLoc, endLoc, pt);
+				move_from_to(fromLoc, endLoc, pt);
 
 			}
 			not_match_cnt++;
@@ -224,13 +226,13 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 				else {
 
 					cout << " 将在上边缘中间等待的子块移至该去的位置 " << endl;
-					find_pos_cnt_in_seg_all(rstLoc, tmp_cnt);
-					find_seg_k_in_src(tmp_cnt, rstLoc, CHECK_UP_MARGIN);
-					cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
+					find_who_is_at_pos(rstLoc, tmp_cnt);
+					find_accurate_pos_at_pos(rstLoc, tmp_cnt, fromLoc);
+					cout << "初始位置坐标rstLoc: " << fromLoc << endl << endl;
 
 					endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
 						(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
-					move_from_to(rstLoc, endLoc, pt);
+					move_from_to(fromLoc, endLoc, pt);
 				}
 			}
 			if (checkMargin(CHECK_BOTTOM_MARGIN)) { //  移动下边缘子块
@@ -243,14 +245,14 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 				else {
 
-					cout << " 将在上边缘中间等待的子块移至该去的位置 " << endl;
-					find_pos_cnt_in_seg_all(rstLoc, tmp_cnt);
-					find_seg_k_in_src(tmp_cnt, rstLoc, CHECK_BOTTOM_MARGIN);
-					cout << "初始位置坐标rstLoc: " << rstLoc << endl << endl;
+					cout << " 将在下边缘中间等待的子块移至该去的位置 " << endl;
+					find_who_is_at_pos(rstLoc, tmp_cnt);
+					find_accurate_pos_at_pos(rstLoc, tmp_cnt, fromLoc);
+					cout << "初始位置坐标rstLoc: " << fromLoc << endl << endl;
 
 					endLoc = Point((X0 + d * (1 + 2.0 * (tmp_cnt % mode))) / 2.0,
 						(Y0 + d * (1 + 2.0 * (tmp_cnt / mode))) / 2.0);
-					move_from_to(rstLoc, endLoc, pt);
+					move_from_to(fromLoc, endLoc, pt);
 				}
 			}
 
@@ -277,16 +279,17 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 		{
 			m_arg->box.width = x - m_arg->box.x;
 			m_arg->box.height = y - m_arg->box.y;
-		}
+		}break;
 	}
-	break;
+	
 	case CV_EVENT_LBUTTONDOWN:case CV_EVENT_RBUTTONDOWN: // 左/右键按下
 	{
 		m_arg->Hit = event == CV_EVENT_RBUTTONDOWN;
 		m_arg->Drawing = true;
 		m_arg->box = cvRect(x, y, 0, 0);
+		break;
 	}
-	break;
+	
 	case CV_EVENT_LBUTTONUP:case CV_EVENT_RBUTTONUP: // 左/右键弹起
 	{
 		m_arg->Hit = false;
@@ -301,49 +304,40 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 			m_arg->box.y += m_arg->box.height;
 			m_arg->box.height *= -1;
 		}
+		break;
 	}
-	break;
+	
 	}
 }
 
 /*********************移动机械臂*********************/
 void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt) {
+	
+	if (fromLoc.x < 0 || fromLoc.y < 0 || fromLoc.x > 540 || fromLoc.y > 960 || norm(fromLoc - STOP / 2) < 87 / 2 ||
+		toLoc.x < 0 || toLoc.y < 0 || toLoc.x > 540 || toLoc.y > 960 || norm(toLoc - STOP / 2) < 87 / 2) {
+			qDebug() << "\nwarning pos out of bound!\n"; return; 
+	}
+	double t = 1.5;
 
 	scaleX = (7.0 + fromLoc.x) / pt.cols;
-	scaleY = (63.0 - UP_CUT + fromLoc.y) / pt.rows;
-	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
+	scaleY = ((double)fromLoc.y) / pt.rows;
 	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
 	device->comHitDown();
 
-	Sleep(1.5 * 1000);
+	Sleep(t * 1000);
 	scaleX = (7.0 + toLoc.x) / pt.cols;
-	scaleY = (63.0 - UP_CUT + toLoc.y) / pt.rows;
-	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
+	scaleY = ((double)toLoc.y) / pt.rows;
 	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
+	//Sleep(3 * 1000);
 	device->comHitUp();
-	Sleep(1.5 * 1000);
+	Sleep(t * 1000);
 
 	device->comMoveToScale(0, 0); // 返回原点
-	Sleep(1.5 * 1000);
+	Sleep(t * 1000);
 }
-
-void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
-
-	scaleX = (7.0 + loc.x) / pt.cols;
-	scaleY = (63.0 - UP_CUT + loc.y) / pt.rows;
-	if (scaleX > 1 || scaleY > 1 || scaleX < 0 || scaleY < 0) { qDebug() << "\nwarning pos out of bound!\n"; return; }
-	device->comMoveToScale(scaleX, scaleY); qDebug() << "(scaleX, scaleY) = (" << scaleX << ", " << scaleY << ")\n";
-	device->comHitDown();
-	Sleep(100);
-	device->comHitUp();
-
-	device->comMoveToScale(0, 0); // 返回原点
-	Sleep(1.5 * 1000);
-}
-
 
 /****************模板匹配***************/
-void find_pos_cnt_in_seg_all(Point& pos, int &seg_cnt) {
+void find_who_is_at_pos(Point& pos, int &seg_cnt) {
 
 	Mat src, seg, result;
 	double dSize = d;
@@ -367,6 +361,29 @@ void find_pos_cnt_in_seg_all(Point& pos, int &seg_cnt) {
 	// 找到最小的值
 	double maxNum = *std::min_element(minValues, minValues + mode * mode);
 	seg_cnt = std::find(minValues, minValues + mode * mode, maxNum) - minValues;
+}
+
+void find_accurate_pos_at_pos(Point& pos, int &seg_cnt, Point& rstLoc) {
+
+	Mat src, seg, result;
+	double dSize = 3 * d;
+	Point tl = pos - Point(dSize / 2, dSize / 2);
+	Point br = pos + Point(dSize / 2, dSize / 2);
+	if (tl.x < 0) tl.x = 0;
+	if (tl.y < 0) tl.y = 0;
+	if (br.x > 540) br.x = 540;
+	if (br.y > 960) br.y = 960;
+	src = frame(Rect(tl, br));
+
+	// 切出seg
+	updateFilenames(seg_cnt);
+	seg = imread(file_seg);
+	cv::resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
+
+	// 匹配src与seg
+	_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	
+	rstLoc = tl + Point(matchLoc.x + seg.cols / 2, matchLoc.y + seg.rows / 2);
 }
 
 void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt) {
@@ -407,14 +424,12 @@ void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE) {
 	// 切出src
 	Mat src, seg, result, src_display;
 	src = imread("frame.png");
-	src.copyTo(src_display);
 
 	switch (CHECK_TYPE) {
 	case CHECK_UP_MARGIN: src = src(Rect(0, 0, 540, Y0 / 2)); break;
 	case CHECK_BOTTOM_MARGIN: src = src(Rect(0, Y1 / 2, 540, 960)); break;
 	}
 	cv::resize(src, src, Size(src.cols / alpha, src.rows / alpha));
-
 
 	// 切出seg
 	updateFilenames(seg_num);
@@ -425,18 +440,10 @@ void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE) {
 	_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 
 	// 保存匹配结果rstLoc
-	rstLoc = Point(matchLoc.x + seg.cols / 2, matchLoc.y + seg.rows / 2);
-	rectangle(src_display, matchLoc, Point(matchLoc.x + seg.cols, matchLoc.y + seg.rows), Scalar::all(255), 2, 8, 0);
-	putText(src_display, num, Point(matchLoc.x, matchLoc.y + seg.rows / 1.5), 6, 1, Scalar(255, 0, 255), 2);
-
+	rstLoc = matchLoc + Point(seg.cols / 2, seg.rows / 2);
 	rstLoc *= alpha;
 	if (CHECK_TYPE == CHECK_BOTTOM_MARGIN)
 		rstLoc += Point(0, Y1 / 2);
-
-	// 显示匹配结果
-	//cv::imwrite(file_final, src_display);
-	//namedWindow(file_final);
-	//imshow(file_final, src_display);
 }
 
 void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
@@ -452,15 +459,16 @@ void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 /*****************对上下边缘的检查************************/
 bool checkMargin(int CHECK_UP_OR_DOWN) {
 
+	cout << "正在对上下边缘做检查" << endl;
 	Mat A = imread("frame.png"), AA = imread(file_init);
 	cv::resize(AA, AA, A.size());
 	Mat C = cv::abs(A - AA);
 
 	Mat MarginPic;
 	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)
-		MarginPic = C(Rect(Point(0, 0), Point(540 - 5, Y0 / 2 - 10)));
+		MarginPic = C(Rect(Point(0, 0), Point(540, Y0 / 2)));
 	else
-		MarginPic = C(Rect(Point(0, Y1 / 2 + 15), Point(540 - 5, 960 - 10)));
+		MarginPic = C(Rect(Point(0, Y1 / 2), Point(540, 960)));
 
 	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
 	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
@@ -474,21 +482,33 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 	if (contours.size() == 0) return false;
 
 	// 获取 bounded Rect 及其 center 坐标
+	Rect bddRect; bool hasMarginRect = false;
 	vector< vector<Point> >  contours_poly(contours.size());
 	for (int i = 0; i < contours.size(); ++i) {
 		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
-		Rect bddRect = boundingRect(Mat(contours_poly[i]));
+		bddRect = boundingRect(Mat(contours_poly[i]));
+
 		if (bddRect.area() > 2000) {
 
 			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
-			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; break;
+			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; 
+			cout << "bddRect: " << bddRect << endl;
+			cout << "rstLoc: " << rstLoc << endl;
+			rectangle(MarginPic, bddRect, Scalar::all(255), 5, 8, 0);
+			putText(MarginPic, num, rstLoc, 20, 2, Scalar(255, 0, 255), 2);
+			imshow("MarginPic", MarginPic);
+			waitKey(-1);
+			system("pause");
+
+			hasMarginRect = true; break;
+		
 		}
 	}
-
+	
 	if (CHECK_UP_OR_DOWN == CHECK_BOTTOM_MARGIN) // 注意如果是下边缘检查时y坐标要加上剪切常数
-		rstLoc.y += Y1 / 2 + 15;
+		rstLoc.y += Y1 / 2;
 
-	return true;
+	return hasMarginRect;
 }
 
 /****************判断当前状态***************/
@@ -504,7 +524,7 @@ double check_match(int& cnt, int pic_num) {
 	xi0 = X0 + d * (1 + 2.0 * (seg_cnt % mode));
 	yi0 = Y0 + d * (1 + 2.0 * (seg_cnt / mode));
 
-	double dSize = d;
+	double dSize = 0.7*d;
 	src = frame(Rect(Point(xi0 / 2 - dSize / 2, yi0 / 2 - dSize / 2), Size(dSize, dSize)));
 
 	// 切出seg
@@ -524,75 +544,23 @@ double check_match(int& cnt, int pic_num) {
 	return minVal;
 }
 
-void usrGameController::checkFrameState() {
+void checkFrameState() {
 
 	Mat  templ, result;
 	frame = imread("frame.png");
-
-	templ = imread(game_select01);
+	templ = imread(file_door);
 	cv::resize(templ, templ, Size(540, 960));
 	templ = templ(Rect(1, 1, 500, 900));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_SELECT01 minVal: " << minVal << endl;
-	if (minVal < 1e8) {
-		STATE = GAME_SELECT01;
-		qDebug() << "GAME_SELECT01 matched success" << endl;
-		// Click the game icon on home screen
-		Point clickLoc = Point(420 / 2, 200 / 2);
-		click_at(clickLoc, _pt_global);
-	}
-
-	templ = imread(game_select02);
-	cv::resize(templ, templ, Size(540, 960));
-	templ = templ(Rect(1, 1, 500, 900));
-	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_SELECT_2 minVal: " << minVal << endl;
-	if (minVal < 1e8) {
-		STATE = GAME_SELECT02;
-		qDebug() << "GAME_SELECT_2 matched success" << endl;
-		// selete FREE games
-		Point clickLoc = Point(794 / 2, 528 / 2);
-		click_at(clickLoc, _pt_global);
-	}
-
-	//templ = imread(game_select03);
-	//cv::resize(templ, templ, Size(540, 960));
-	//templ = templ(Rect(1, 1, 500, 900));
-	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	//qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
-	//if (minVal < 1e8) {
-	//	STATE = GAME_SELECT03;
-	//	qDebug() << "GAME_SELECT03 matched success" << endl;
-	//	// selete the second puzzle
-	//	Point clickLoc = Point(816 / 2, 636 / 2);
-	//	click_at(clickLoc, _pt_global);
-	//}
-
-	templ = imread(game_select03);
-	cv::resize(templ, templ, Size(540, 960));
-	templ = templ(Rect(1, 1, 500, 900));
-	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
-	if (minVal < 1e8) {
-		STATE = GAME_SELECT03;
-		qDebug() << "GAME_SELECT03 matched success" << endl;
-		// selete NEW GAME
-		Point clickLoc = Point(542 / 2, 1590 / 2);
-		click_at(clickLoc, _pt_global);
-	}
+	qDebug() << "GAME_DOOR minVal: " << minVal << endl;
+	if (minVal < 1e8) STATE = GAME_DOOR, qDebug() << "GAME_DOOR matched success" << endl;
 
 	templ = imread(file_init);
 	cv::resize(templ, templ, Size(540, 960));
 	templ = templ(Rect(0, 0, 500, 900));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_INIT minVal: " << minVal << endl;
-	if (minVal < 1e9) {
-		STATE = GAME_INIT;
-		qDebug() << "GAME_INIT matched success" << endl;
-		// selete PLAY
-		Point clickLoc = Point(538 / 2, 1702 / 2);
-		click_at(clickLoc, _pt_global);
-	}
+	if (minVal < 1e9) STATE = GAME_INIT, qDebug() << "GAME_INIT matched success" << endl;
 
 	Mat in_square(frame, Rect(Point(X0 / 2, Y0 / 2), Point(X1 / 2, Y1 / 2)));//551x1078 scale: x(0.11,0.90) y(0.30,0.70)
 	Mat in_square_templ = imread(file_in_square);
