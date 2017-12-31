@@ -26,15 +26,15 @@ enum {
 
 enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
 
-const int mode = 8;// 8*8=64模式
+const int mode = 6;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
 const int STOP_X = 1018, STOP_Y = 64, STOP_R = 87;
 Point STOP = Point(STOP_X, STOP_Y);
 double d = (X1 - X0) / 2.0 / mode;
-double matchValsCntToSeg[] = { 0, 0, 3e7, 2e7, 3e7, 6e6, 6e6, 8e6, 4e6 };
-double matchValsCntToNull[] = { 0, 0, 1e7, 1.5e7, 3e7, 6e6, 6e6, 1e6, 1e6 };
+double matchValsCntToSeg[] = { 0, 0, 5e7, 2e7, 3e7, 6e6, 6e6, 8e6, 4e6 };
+double matchValsCntToNull[] = { 0, 0, 3e7, 3e7, 3e7, 6e6, 6e6, 1e6, 1e6 };
 
 int success_game_in_cnt = 0;
 int seg_cnt = 0;
@@ -49,7 +49,7 @@ Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc, pos;
 ofstream out("E:/qtdipdata.txt");
 string	game_select01("E:/_pic/GAME_SELECT01.png"), game_select02("E:/_pic/GAME_SELECT02.png"),
 game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png"),
-game_stop("E:/_pic/GAME_STOP.png"),
+game_stop("E:/_pic/GAME_STOP.png"), game_stop_symbol("E:/_pic/stop.png"),
 game_success01("E:/_pic/GAME_SUCCESS01.png"), game_success02("E:/_pic/GAME_SUCCESS02.png");;
 
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
@@ -151,14 +151,14 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	cout << "当前拼图模式为 mode = " << mode << endl;
 	updateFilenames(mode);
 
-	//// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
-	//// 要根据实际Total control窗口的大小调整, 此处为552x1078
+	// 视频流存放在该路径下, 记住: frame 就是当前帧的数据
+	// 要根据实际Total control窗口的大小调整, 此处为552x1078
 	frame = img(Rect(7, 65, 540, 960));
 	cv::imwrite("frame.png", frame);
-	//system("pause");
-	//// 先判别当前帧处于什么状态，开始游戏还是进行游戏
-	//checkFrameState(pt);
-	STATE = GAME_IN;
+	////system("pause");
+	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
+	checkFrameState(pt);
+	//STATE = GAME_IN;
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
@@ -261,10 +261,6 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 		}
 
-		// 检查我们是不是成功啦啦啦啦
-		if (checkSuccess())
-			cout << "ALL matched success" << endl,
-			system("pause");
 	}
 
 	return 0;
@@ -336,7 +332,7 @@ void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::M
 	Sleep(t * 1000);
 
 	device->comMoveToScale(0, 0); // 返回原点
-	Sleep(t * 1000);
+	Sleep(t * 1000 / 3);
 }
 
 void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
@@ -505,13 +501,13 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
 		bddRect = boundingRect(Mat(contours_poly[i]));
 
-		if (bddRect.area() > 2000) {
+		if (bddRect.area() > 2000 && bddRect.width < 2*d) {
 
 			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
 			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; 
-			/*cout << "bddRect: " << bddRect << endl;
+			cout << "bddRect: " << bddRect << endl;
 			cout << "rstLoc: " << rstLoc << endl;
-			rectangle(MarginPic, bddRect, Scalar::all(255), 5, 8, 0);
+			/*rectangle(MarginPic, bddRect, Scalar::all(255), 5, 8, 0);
 			putText(MarginPic, num, rstLoc, 20, 2, Scalar(255, 0, 255), 2);
 			imshow("MarginPic", MarginPic);
 			waitKey(-1);*/
@@ -567,6 +563,20 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 	frame = imread("frame.png");
 	resize(frame, frame, Size(540 / alpha, 960 / alpha));
 
+	templ = imread(game_stop_symbol);
+	cv::resize(templ, templ, Size(templ.cols / 2 / alpha, templ.rows / 2 / alpha));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_IN minVal: " << minVal << endl;
+	if (minVal < 2e6) {
+		STATE = GAME_IN;
+		qDebug() << "GAME_IN matched success" << endl; return;
+	}
+
+	// 检查我们是不是成功啦啦啦啦
+	if (checkSuccess())
+		cout << "ALL matched success" << endl,
+		system("pause");
+
 	templ = imread(game_select01);
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
@@ -576,45 +586,8 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		qDebug() << "GAME_SELECT01 matched success" << endl;
 		// Click the game icon on home screen
 		Point clickLoc = Point(672 / 2, 200 / 2);
-		click_at(clickLoc, _pt_global);
+		click_at(clickLoc, _pt_global); return;
 	}
-
-	//templ = imread(game_select02);
-	//cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
-	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	//qDebug() << "GAME_SELECT_2 minVal: " << minVal << endl;
-	//if (minVal < 1e9) {
-	//	STATE = GAME_SELECT02;
-	//	qDebug() << "GAME_SELECT_2 matched success" << endl;
-	//	// selete FREE games
-	//	Point clickLoc = Point(794 / 2, 528 / 2);
-	//	click_at(clickLoc, _pt_global);
-	//}
-
-	//templ = imread(game_select03);
-	//cv::resize(templ, templ, Size(540, 960));
-	//templ = templ(Rect(1, 1, 500, 900));
-	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	//qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
-	//if (minVal < 1e8) {
-	//	STATE = GAME_SELECT03;
-	//	qDebug() << "GAME_SELECT03 matched success" << endl;
-	//	// selete the second puzzle
-	//	Point clickLoc = Point(816 / 2, 636 / 2);
-	//	click_at(clickLoc, _pt_global);
-	//}
-
-	//templ = imread(game_select03);
-	//cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
-	//_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	//qDebug() << "GAME_SELECT03 minVal: " << minVal << endl;
-	//if (minVal < 1e9) {
-	//	STATE = GAME_SELECT03;
-	//	qDebug() << "GAME_SELECT03 matched success" << endl;
-	//	// selete NEW GAME
-	//	Point clickLoc = Point(542 / 2, 1590 / 2);
-	//	click_at(clickLoc, _pt_global);
-	//}
 
 	templ = imread(game_select04);
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
@@ -628,26 +601,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		click_at(clickLoc, _pt_global);
 		// select PLAY
 		clickLoc = Point(554 / 2, 1706 / 2);
-		click_at(clickLoc, _pt_global);
-	}
-
-	templ = imread(game_success01);
-	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
-	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_SUCCESS01 minVal: " << minVal << endl;
-	if (minVal < 1e9) {
-		STATE = GAME_SUCCESS;
-		qDebug() << "GAME_SUCCESS01 matched success" << endl;
-		system("pause");
-	}
-	templ = imread(game_success02);
-	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
-	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-	qDebug() << "GAME_SUCCESS02 minVal: " << minVal << endl;
-	if (minVal < 1e9) {
-		STATE = GAME_SUCCESS;
-		qDebug() << "GAME_SUCCESS02 matched success" << endl;
-		system("pause");
+		click_at(clickLoc, _pt_global); return;
 	}
 
 	templ = imread(game_stop);
@@ -657,26 +611,50 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 	if (minVal < 1e9) {
 		STATE = GAME_STOP;
 		qDebug() << "GAME_STOP matched success" << endl;
-		click_at(STOP, _pt_global);
+		click_at(STOP / 2, _pt_global); return;
 	}
+
+	
 }
 
 bool checkSuccess() {
 
-	if (STATE != GAME_IN) return false;
-
-	if (!initFinishedPics) {
-		for (int i = 0; i < mode*mode; ++i)
-			finishedPics[i] = false;
-		initFinishedPics = true;
+	Mat  templ, result;
+	frame = imread("frame.png");
+	resize(frame, frame, Size(540 / alpha, 960 / alpha));
+	templ = imread(game_success01);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_SUCCESS01 minVal: " << minVal << endl;
+	if (minVal < 4e8) {
+		STATE = GAME_SUCCESS;
+		qDebug() << "GAME_SUCCESS01 matched success" << endl;
+		return true;
+	}
+	templ = imread(game_success02);
+	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
+	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
+	qDebug() << "GAME_SUCCESS02 minVal: " << minVal << endl;
+	if (minVal < 4e8) {
+		STATE = GAME_SUCCESS;
+		qDebug() << "GAME_SUCCESS02 matched success" << endl;
+		return true;
 	}
 
-	remainedPics = 0;
-	for (int i = 0; i < mode*mode; ++i)
-		if (!finishedPics[i]) remainedPics++;
+	updateFilenames(0);
+	Mat A = imread("frame.png");
+	Mat B = imread(file_play);
+	resize(B, B, Size(B.cols / 2, B.rows / 2)); 
+	Mat C = abs(B - A);
+	C = C(Rect(Point(X0 / 2, Y0 / 2), Point(X1 / 2, Y1 / 2)));
+	cvtColor(C, C, cv::COLOR_RGB2GRAY);
+	threshold(C, C, 10, 255, THRESH_BINARY);
+	erode(C, C, cv::getStructuringElement(MORPH_RECT, Size(3, 3)));
+	dilate(C, C, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
+	erode(C, C, cv::getStructuringElement(MORPH_RECT, Size(7, 7)));
+	remainedPics = round((1 - sum(C)[0] / (C.rows*C.cols) / 256) * mode * mode);
 
-	if (remainedPics == 0)	return true;
-	else return false;
+	return false;
 }
 
 void updateFilenames(int seg_num = 0)
