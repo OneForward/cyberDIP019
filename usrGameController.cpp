@@ -63,8 +63,7 @@ Mat frame;
 
 void _match(Mat& src, Mat& seg, Mat& result, double& minVal, double& maxVal,
 	Point& minLoc, Point& maxLoc, Point& matchLoc);
-void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE = CHECK_ALL);
-void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt);
+void find_where_is_seg_k(int seg_num, Point& rstLoc, int CHECK_TYPE = CHECK_ALL);
 void find_who_is_at_pos(Point& pos, int &seg_cnt);
 void find_accurate_pos_at_pos(Point& pos, int &seg_cnt, Point& rstLoc);
 bool checkSuccess();
@@ -136,15 +135,6 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 	
 	//move_from_to(Point(332-7, 543), Point(339-7, 882), pt);
-	
-
-
-
-
-
-
-
-
 
 
 	/*************以下为我添加的代码******************/
@@ -191,7 +181,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 				cout << " 这里这里还是空的 " << endl;
 				// 匹配一下seg_cnt, 找到匹配位置rstLoc
-				find_seg_k_in_src(seg_cnt, fromLoc);
+				find_where_is_seg_k(seg_cnt, fromLoc);
 				cout << "初始位置坐标fromLoc: " << fromLoc << endl << endl;
 
 				endLoc = Point((X0 + d * (1 + 2.0 * (seg_cnt % mode))) / 2.0,
@@ -309,7 +299,7 @@ void mouseCallback(int event, int x, int y, int flags, void*param)
 	}
 }
 
-/*********************移动机械臂*********************/
+/*********************操作机械臂*********************/
 void usrGameController::move_from_to(cv::Point& fromLoc, cv::Point& toLoc, cv::Mat& pt) {
 	
 	if (fromLoc.x < 0 || fromLoc.y < 0 || fromLoc.x > 540 || fromLoc.y > 960 || norm(fromLoc - STOP / 2) < 87 / 2 ||
@@ -400,41 +390,7 @@ void find_accurate_pos_at_pos(Point& pos, int &seg_cnt, Point& rstLoc) {
 	rstLoc = tl + Point(matchLoc.x + seg.cols / 2, matchLoc.y + seg.rows / 2);
 }
 
-void find_seg_k_in_seg_all(int seg_cnt, int &tmp_cnt) {
-	// 计算seg_cnt的位置，并裁切
-	Mat src, result, seg;
-	frame = imread("frame.png");
-
-	double xi0, yi0;
-	xi0 = X0 + d * (1 + 2.0 * (seg_cnt % mode));
-	yi0 = Y0 + d * (1 + 2.0 * (seg_cnt / mode));
-	xi0 /= 2; yi0 /= 2;
-
-	double dSize = d;
-	src = frame(Rect(Point(xi0 - dSize / 2, yi0 - dSize / 2), Size(dSize, dSize)));
-
-	// 全部子块都放进来匹配，比较谁的相似度最高
-
-	double* minValues = new double[mode*mode];
-	for (int seg_num = 0; seg_num < mode*mode; ++seg_num) {
-		// 切出seg
-		updateFilenames(seg_num);
-		seg = imread(file_seg);
-		cv::resize(seg, seg, Size(seg.cols / 2, seg.rows / 2));
-
-		// 匹配src与seg
-		_match(src, seg, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
-
-		// 保存minVal
-		minValues[seg_num] = minVal;
-	}
-
-	// 找到最大的值
-	double maxNum = *std::min_element(minValues, minValues + mode * mode);
-	tmp_cnt = std::find(minValues, minValues + mode * mode, maxNum) - minValues;
-}
-
-void find_seg_k_in_src(int seg_num, Point& rstLoc, int CHECK_TYPE) {
+void find_where_is_seg_k(int seg_num, Point& rstLoc, int CHECK_TYPE) {
 	// 切出src
 	Mat src, seg, result, src_display;
 	src = imread("frame.png");
