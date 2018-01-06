@@ -46,6 +46,9 @@ double alpha = 2.5;
 double scaleX, scaleY;
 double minVal; double maxVal;
 Point minLoc, maxLoc, matchLoc, rstLoc, endLoc, fromLoc, pos;
+
+// 文件路径改用相对路径。_pic文件夹与.sln文件同级
+/*
 ofstream out("E:/qtdipdata.txt");
 string	game_select01("E:/_pic/GAME_SELECT01.png"), game_select02("E:/_pic/GAME_SELECT02.png"),
 game_select03("E:/_pic/GAME_SELECT03.png"), game_select04("E:/_pic/GAME_SELECT04.png"),
@@ -55,6 +58,18 @@ game_success01("E:/_pic/GAME_SUCCESS01.png"), game_success02("E:/_pic/GAME_SUCCE
 string  file_play("E:/_pic/play02_04.png"), file_seg("E:/_pic/seg02_00_00.png"),
 file_final("E:/_pic/final02_00.png"), file_door("E:/_pic/door02_02.png"),
 file_init("E:/_pic/init02_02.png"), file_in_square("E:/_pic/in_square02_00.png");
+*/
+
+ofstream out("../qtdipdata.txt");
+string	game_select01("../_pic/GAME_SELECT01.png"), game_select02("../_pic/GAME_SELECT02.png"),
+game_select03("../_pic/GAME_SELECT03.png"), game_select04("../_pic/GAME_SELECT04.png"),
+game_stop("../_pic/GAME_STOP.png"), game_stop_symbol("../_pic/stop.png"),
+game_success01("../_pic/GAME_SUCCESS01.png"), game_success02("../_pic/GAME_SUCCESS02.png");;
+
+string  file_play("../_pic/play02_04.png"), file_seg("../_pic/seg02_00_00.png"),
+file_final("../_pic/final02_00.png"), file_door("../_pic/door02_02.png"),
+file_init("../_pic/init02_02.png"), file_in_square("../_pic/in_square02_00.png");
+
 bool* finishedPics = new bool[mode*mode];
 bool initFinishedPics(false);
 string num = "00";
@@ -72,18 +87,18 @@ void updateFilenames(int seg_num);
 double check_match(int& cnt, int);
 
 #ifdef VIA_OPENCV
-//构造与初始化
+// 构造与初始化
 usrGameController::usrGameController(void* qtCD)
 {
 	qDebug() << "usrGameController online.";
-	device = new deviceCyberDip(qtCD);//设备代理类
+	device = new deviceCyberDip(qtCD);// 设备代理类
 	cv::namedWindow(WIN_NAME);
 	cv::setMouseCallback(WIN_NAME, mouseCallback, (void*)&(argM));
 	counter = 0;
 
 }
 
-//析构
+// 析构
 usrGameController::~usrGameController()
 {
 	cv::destroyAllWindows();
@@ -94,7 +109,7 @@ usrGameController::~usrGameController()
 	qDebug() << "usrGameController offline.";
 }
 
-//处理图像 
+// 处理图像 
 int usrGameController::usrProcessImage(cv::Mat& img)
 {
 	cv::Size imgSize(img.cols, img.rows - UP_CUT);
@@ -104,11 +119,11 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 		return -1;
 	}
 
-	//截取图像边缘
+	// 截取图像边缘
 	cv::Mat pt = img(cv::Rect(0, UP_CUT, imgSize.width, imgSize.height));
 	cv::imshow(WIN_NAME, pt);
 
-	//判断鼠标点击尺寸
+	// 判断鼠标点击尺寸
 	if (argM.box.x >= 0 && argM.box.x < imgSize.width&&
 		argM.box.y >= 0 && argM.box.y < imgSize.height
 		)
@@ -347,7 +362,7 @@ void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
 }
 
 /****************模板匹配***************/
-void find_who_is_at_pos(Point& pos, int &seg_cnt) { // 确定pos位置的子块标号
+void find_who_is_at_pos(Point& pos, int &seg_cnt) {// 确定pos位置的子块标号
 
 	Mat src, seg, result;
 	double dSize = d;
@@ -440,34 +455,30 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 	Mat C = cv::abs(A - AA);
 
 	Mat MarginPic;
-	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)
+	if (CHECK_UP_OR_DOWN == CHECK_UP_MARGIN)// 框定上边缘区域
 		MarginPic = C(Rect(Point(0, 0), Point(540, Y0 / 2)));
-	else
+	else// 框定下边缘区域
 		MarginPic = C(Rect(Point(0, Y1 / 2), Point(540, 960)));
-	
-	// 
-	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
-	//
-	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
-	//
-	erode(MarginPic, MarginPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
+
+	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);// 颜色空间由RGB转换为灰度图像
+	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);// 对边缘区域进行二值化处理
+	erode(MarginPic, MarginPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));// 矩形内核腐蚀
 
 	Mat threshold_output = MarginPic;
-	vector< vector<Point> > contours;
-	vector<Vec4i> hierarchy;
+	vector< vector<Point> > contours;// 该变量用于保存检测到的轮廓
+	vector<Vec4i> hierarchy;// 该变量表示轮廓的继承关系
 
-	// 
 	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
-	if (contours.size() == 0) return false;
+	if (contours.size() == 0) return false;// 边缘检查未检测出子块轮廓
 
 	// 获取 bounded Rect 及其 center 坐标
 	Rect bddRect; bool hasMarginRect = false;
 	vector< vector<Point> >  contours_poly(contours.size());
-	for (int i = 0; i < contours.size(); ++i) {
-		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);
-		bddRect = boundingRect(Mat(contours_poly[i]));
+	for (int i = 0; i < contours.size(); ++i) {// 对轮廓逐项处理
+		approxPolyDP(Mat(contours[i]), contours_poly[i], 3, true);// 将检测出的轮廓的连续光滑曲线折线化
+		bddRect = boundingRect(Mat(contours_poly[i]));// 创建包围轮廓的矩形框
 
-		if (bddRect.area() > 2000 && bddRect.width < 2*d) {
+		if (bddRect.area() > 2000 && bddRect.width < 2*d) {// 边缘检查出子块
 
 			rstLoc.x = (bddRect.tl().x + bddRect.br().x) / 2;
 			rstLoc.y = (bddRect.tl().y + bddRect.br().y) / 2; 
@@ -542,7 +553,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_SELECT01 minVal: " << minVal << endl;
-	if (minVal < 1e9) {
+	if (minVal < 1e9) {//  当前处于游戏内拼图图样选取界面
 		STATE = GAME_SELECT01;
 		qDebug() << "GAME_SELECT01 matched success" << endl;
 		// Click the game icon on home screen
@@ -554,7 +565,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_SELECT04 minVal: " << minVal << endl;
-	if (minVal < 1e9) {
+	if (minVal < 1e9) {// 当前处于拼图阶数选取状态
 		STATE = GAME_SELECT04;
 		qDebug() << "GAME_SELECT04 matched success" << endl;
 		// select MODE-slider
@@ -569,7 +580,7 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
 	qDebug() << "GAME_STOP minVal: " << minVal << endl;
-	if (minVal < 1e9) {
+	if (minVal < 1e9) {// 当前处于游戏暂停状态
 		STATE = GAME_STOP;
 		qDebug() << "GAME_STOP matched success" << endl;
 		click_at(STOP / 2, _pt_global); return;
