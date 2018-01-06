@@ -347,7 +347,7 @@ void usrGameController::click_at(cv::Point& loc, cv::Mat& pt) {
 }
 
 /****************模板匹配***************/
-void find_who_is_at_pos(Point& pos, int &seg_cnt) {
+void find_who_is_at_pos(Point& pos, int &seg_cnt) { // 确定pos位置的子块标号
 
 	Mat src, seg, result;
 	double dSize = d;
@@ -444,15 +444,19 @@ bool checkMargin(int CHECK_UP_OR_DOWN) {
 		MarginPic = C(Rect(Point(0, 0), Point(540, Y0 / 2)));
 	else
 		MarginPic = C(Rect(Point(0, Y1 / 2), Point(540, 960)));
-
+	
+	// 
 	cvtColor(MarginPic, MarginPic, cv::COLOR_RGB2GRAY);
+	//
 	threshold(MarginPic, MarginPic, 10, 255, THRESH_BINARY);
+	//
 	erode(MarginPic, MarginPic, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
 
 	Mat threshold_output = MarginPic;
 	vector< vector<Point> > contours;
 	vector<Vec4i> hierarchy;
 
+	// 
 	findContours(threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 	if (contours.size() == 0) return false;
 
