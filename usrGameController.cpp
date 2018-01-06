@@ -26,7 +26,7 @@ enum {
 
 enum { CHECK_ALL, CHECK_UP_MARGIN, CHECK_BOTTOM_MARGIN };
 
-const int mode = 6;// 8*8=64模式
+const int mode = 8;// 8*8=64模式
 				   // (552, 1078)  clip (7,63) (547, 1023) ->real (540x960)
 				   // square 893x893 in (1080x1920)
 const int X0 = 98, Y0 = 518, X1 = 991, Y1 = 1411;
@@ -135,7 +135,9 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 
 	
 	//move_from_to(Point(332-7, 543), Point(339-7, 882), pt);
-
+	/*imwrite("E:/_pic/pt.png", pt);
+	imwrite("pt.png", pt);
+	system("pause");*/
 
 	/*************以下为我添加的代码******************/
 	cout << "当前拼图模式为 mode = " << mode << endl;
@@ -149,6 +151,10 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 	// 先判别当前帧处于什么状态，开始游戏还是进行游戏
 	checkFrameState(pt);
 	//STATE = GAME_IN;
+	// 检查我们是不是成功啦啦啦啦
+	if (checkSuccess())
+		cout << "ALL matched success" << endl,
+		system("pause");
 
 	if (STATE == GAME_IN) {
 		// 进入游戏运行状态
@@ -204,7 +210,7 @@ int usrGameController::usrProcessImage(cv::Mat& img)
 			seg_cnt++; seg_cnt %= mode * mode;
 			not_match_cnt = 0;
 		}
-
+		cout << "\nremainedPics = " << remainedPics << endl << endl;
 		if (remainedPics <= mode) { // 当余下的图片较少时，开始检查上下边缘
 
 			cout << " 当余下的图片较少时，开始检查上下边缘 " << endl;
@@ -528,11 +534,6 @@ void usrGameController::checkFrameState(cv::Mat& _pt_global) {
 		qDebug() << "GAME_IN matched success" << endl; return;
 	}
 
-	// 检查我们是不是成功啦啦啦啦
-	if (checkSuccess())
-		cout << "ALL matched success" << endl,
-		system("pause");
-
 	templ = imread(game_select01);
 	cv::resize(templ, templ, Size(540 / alpha - 1, 960 / alpha - 1));
 	_match(frame, templ, result, minVal, maxVal, minLoc, maxLoc, matchLoc);
@@ -608,7 +609,7 @@ bool checkSuccess() {
 	erode(C, C, cv::getStructuringElement(MORPH_RECT, Size(3, 3)));
 	dilate(C, C, cv::getStructuringElement(MORPH_RECT, Size(5, 5)));
 	erode(C, C, cv::getStructuringElement(MORPH_RECT, Size(7, 7)));
-	remainedPics = round((1 - sum(C)[0] / (C.rows*C.cols) / 256) * mode * mode);
+	remainedPics = mode * mode - round(sum(C)[0] / 256.0 / (C.rows*C.cols)  * mode * mode);
 
 	return false;
 }
